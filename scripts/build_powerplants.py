@@ -97,7 +97,7 @@ def add_custom_powerplants(ppl, custom_powerplants, custom_ppl_query=False):
 if __name__ == "__main__":
     if 'snakemake' not in globals():
         from _helpers import mock_snakemake
-        snakemake = mock_snakemake('build_powerplants')
+        snakemake = mock_snakemake('build_powerplants', year="2015")
     configure_logging(snakemake)
 
     n = pypsa.Network(snakemake.input.base_network)
@@ -113,7 +113,7 @@ if __name__ == "__main__":
                       .where(df.Fueltype != 'Natural Gas',
                              df.Technology.replace('Steam Turbine',
                                                    'OCGT').fillna('OCGT')))))
-
+    ppl=pd.DataFrame(columns=ppl.columns)
     ppl_query = snakemake.config['electricity']['powerplants_filter']
     if isinstance(ppl_query, str):
         ppl.query(ppl_query, inplace=True)
@@ -121,6 +121,8 @@ if __name__ == "__main__":
     # add carriers from own powerplant files:
     custom_ppl_query = snakemake.config['electricity']['custom_powerplants']
     ppl = add_custom_powerplants(ppl, snakemake.input.custom_powerplants, custom_ppl_query)
+    #change country name in ppl from Germany zu DE
+    ppl.Country.replace("Germany", "DE", inplace=True)
 
     cntries_without_ppl = [c for c in countries if c not in ppl.Country.unique()]
 
