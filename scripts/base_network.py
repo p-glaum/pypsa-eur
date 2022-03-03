@@ -580,6 +580,58 @@ def base_network(eg_buses, eg_converters, eg_transformers, eg_lines, eg_links,
 
     n = _adjust_capacities_of_under_construction_branches(n, config)
 
+    # if snakemake.config['scenario']['project'] == 'curtailment': #manipulate lines and links that were not build before a certain year in Germany; ONLY PROJECT "CURTAILMENT"!!!
+    #     if int(str(n.snapshots[0])[2:4]) < 14: #build 2013
+    #         print('adapting lines build in 2013...')
+    #         # Strenghtened Lines
+    #         n.lines.at['9621','s_nom'] /= 2 # Ackerstraße-Matterbusch, 2013
+    #         n.lines.at['751','s_nom'] /= 2 # Mengende-Wanne, 2013
+    #         n.lines.at['745','s_nom'] /= 2 # Goldshöfe-Niederstrotzingen, 2013
+    #         n.lines.at['744','s_nom'] /= 2 # Goldshöfe-Niederstrotzingen, 2013
+       
+    #     if int(str(n.snapshots[0])[2:4]) < 15: #build 2014
+    #         print('adapting lines build in 2014...')
+    #         # New Lines
+    #         n.lines.at['938','under_construction'] = True #Kriftel – Eschborn, built 2014
+    #         n.lines.at['828','under_construction'] = True #Bruchsal – Forst, built 2014
+    #         # Strenghtened
+    #         n.lines.at['861','s_nom'] /= 2 # Gütersloh-Pkt.Friedrichsdorf, 2014
+    #         n.lines.at['766','s_nom'] /= 2 # Sechtem-Neuenahr, 2014
+    #         n.lines.at['9609','s_nom'] /= 2 # Großgartach-Hüffenhardt, 2014
+            
+    #     if int(str(n.snapshots[0])[2:4]) < 16: #build 2015
+    #         print('adapting lines build in 2015...')
+    #         # New Lines
+    #         n.lines.at['647','under_construction'] = True #ThüringerStrombrücke_pt1 Vieselbach-Altenfeld, 2015
+    #         n.lines.at['9642','under_construction'] = True #Abzweig Förderstedt, 2015
+    #         n.lines.at['915','under_construction'] = True #Görries-Parchim/Lübz, 2015
+    #         # Strengtened
+    #         n.lines.at['741','s_nom'] /= 2 # Dellmensingen-Niederstrotzingen, 2015
+    #         n.lines.at['6940','s_nom'] /= 2 # Bärwalde-Schmölln, 2015
+    #         n.lines.at['606','s_nom'] /= 2 #  Mittelbexbach-St.Barbara, 2015
+    #         n.lines.at['1045','s_nom'] /= 2 # Westerkappeln-Hambüren, 2015
+    #         n.lines.at['646','s_nom'] /= 2 # Friedrichsdorf-Bielefeld, 2015
+            
+    #     if int(str(n.snapshots[0])[2:4]) < 18: #build 2017
+    #         print('adapting lines build in 2017...')
+    #         # New Lines
+    #         n.lines.at['583','under_construction'] = True #ThüringerStrombrücke_pt2, Altenfeld-Redwitz, 2017
+    #         n.lines.at['951','under_construction'] = True # Kriftel-Obererlenbach, 2017
+    #         # Strengthened Lines
+    #         n.lines.at['6630','s_nom'] /= 2 # Audorf/Süd-Hamburg/Nord, 2017
+    #         n.lines.at['610','s_nom'] /= 2 # Hoheneck-Rommelsbach, 2017
+    #         n.lines.at['791','s_nom'] /= 2 # Niederrhein-Lackhausen, 2017
+    #         n.lines.at['840','s_nom'] /= 2 # Herne-Wanne, 2017
+
+    #     if int(str(n.snapshots[0])[2:4]) == 18: #2018
+    #         n.lines = n.lines.append(pd.DataFrame(index=['Altenfeld-Redwitz'], columns=n.lines.columns,
+    #                                               data=[['4554', '4766', 380, 4, 30, False, False, np.NaN, np.NaN, 'Al/St 240/40 4-bundle 380.0',
+    #                                                      0.7, 3500, 0., 0., 0., 0., False, 0., np.inf, 0., 1., -np.inf, np.inf, '', 0., 0., 0., 0., 0., 0., 0.]]))
+
+    #     # delete lines and links under construction
+        # n.lines = n.lines[~n.lines.under_construction]
+        # n.links = n.links[~n.links.under_construction]
+
     return n
 
 if __name__ == "__main__":

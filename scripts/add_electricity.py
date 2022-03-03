@@ -255,11 +255,15 @@ def update_transmission_costs(n, costs, length_factor=1.0, simple_hvdc_costs=Fal
     n.links.loc[dc_b, 'capital_cost'] = costs
 
 
-def attach_wind_and_solar(n, costs, input_profiles, technologies, line_length_factor=1):
+def attach_wind_and_solar(n, costs, input_profiles, technologies, ppl, line_length_factor=1):
     # TODO: rename tech -> carrier, technologies -> carriers
 
     for tech in technologies:
         if tech == 'hydro': continue
+
+        p = ppl.query("carrier == @tech")
+        p = p.groupby("bus", as_index=False).p_nom.sum()
+        p.index=p.bus
 
         n.add("Carrier", name=tech)
         with xr.open_dataset(getattr(input_profiles, 'profile_' + tech)) as ds:
@@ -282,16 +286,57 @@ def attach_wind_and_solar(n, costs, input_profiles, technologies, line_length_fa
             else:
                 capital_cost = costs.at[tech, 'capital_cost']
 
-            n.madd("Generator", ds.indexes['bus'], ' ' + tech,
-                   bus=ds.indexes['bus'],
-                   carrier=tech,
-                   p_nom_extendable=True,
-                   p_nom_max=ds['p_nom_max'].to_pandas(),
-                   weight=ds['weight'].to_pandas(),
-                   marginal_cost=costs.at[suptech, 'marginal_cost'],
-                   capital_cost=capital_cost,
-                   efficiency=costs.at[suptech, 'efficiency'],
-                   p_max_pu=ds['profile'].transpose('time', 'bus').to_pandas())
+            # Skip this part when using the custom power plants
+            # n.madd("Generator", ds.indexes['bus'], ' ' + tech,
+            #        bus=ds.indexes['bus'],
+            #        carrier=tech,
+            #        p_nom_extendable=True,
+            #        p_nom_max=ds['p_nom_max'].to_pandas(),
+            #        weight=ds['weight'].to_pandas(),
+            #        marginal_cost=costs.at[suptech, 'marginal_cost'],
+            #        capital_cost=capital_cost,
+            #        efficiency=costs.at[suptech, 'efficiency'],
+            #        p_max_pu=ds['profile'].transpose('time', 'bus').to_pandas())
+            
+            if p.empty: #greenfield
+                n.add("Carrier", name=tech)
+                n.madd("Generator", ds.indexes['bus'], ' ' + tech,
+                       bus=ds.indexes['bus'],
+                       carrier=tech,
+                       p_nom_extendable=True,
+                       p_nom_max=ds['p_nom_max'].to_pandas(),
+                       weight=ds['weight'].to_pandas(),
+                       marginal_cost=costs.at[suptech, 'marginal_cost'],
+                       capital_cost=capital_cost,
+                       efficiency=costs.at[suptech, 'efficiency'],
+                       p_max_pu=ds['profile'].transpose('time', 'bus').to_pandas())
+            else: #add existing powerplants with given & fixed capacites + include renewable profile (p_max_pu)
+                logger.info('Adding {} generators of type {}'.format(len(p), tech))
+                profile = ds['profile'].to_pandas().T
+                weight = ds['weight'].to_pandas()
+                # rename indices in the following to add them at the correct places in the network:
+                profile = profile.rename(index={profile.index[bus_i]: profile.index[bus_i] + ' ' + tech for bus_i in range(len(profile))})
+                weight = weight.rename(index={weight.index[bus_i]: weight.index[bus_i] + ' ' + tech for bus_i in range(len(weight))})
+                p = p.rename(index={p.index[bus_i]: p.iloc[bus_i].bus + ' ' + tech for bus_i in range(len(p))})
+
+                undef_locations = set(p.index)-set(profile.T.columns)
+                if len(undef_locations) > 0:
+                    logger.warning("no profiles found for buses: {}"
+                                   .format(", ".join(undef_locations)))
+                p = p.drop(index = undef_locations)
+                if tech == 'offwind-ac':
+                    print(p.T.columns)
+                
+                n.madd("Generator", p.index,
+                    bus=p.bus,
+                    carrier=tech,
+                    p_nom_extendable=False,
+                    p_nom=p['p_nom'],
+                    weight=weight,
+                    marginal_cost=costs.at[suptech, 'marginal_cost'],
+                    capital_cost=capital_cost,
+                    efficiency=costs.at[suptech, 'efficiency'],
+                    p_max_pu=profile.T.loc[:, p.index])
 
 
 def attach_conventional_generators(n, costs, ppl, carriers):
@@ -568,7 +613,7 @@ if __name__ == "__main__":
     attach_conventional_generators(n, costs, ppl, carriers)
 
     carriers = snakemake.config['renewable']
-    attach_wind_and_solar(n, costs, snakemake.input, carriers, snakemake.config['lines']['length_factor'])
+    attach_wind_and_solar(n, costs, snakemake.input, carriers, ppl, snakemake.config['lines']['length_factor'])
 
     if 'hydro' in snakemake.config['renewable']:
         carriers = snakemake.config['renewable']['hydro'].pop('carriers', [])
