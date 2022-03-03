@@ -258,7 +258,7 @@ def update_transmission_costs(n, costs, length_factor=1.0, simple_hvdc_costs=Fal
 def attach_wind_and_solar(n, costs, input_profiles, technologies, ppl, line_length_factor=1):
     # TODO: rename tech -> carrier, technologies -> carriers
 
-    for tech in technologies:
+    for tech in snakemake.config['renewable']:
         if tech == 'hydro': continue
 
         p = ppl.query("carrier == @tech")
@@ -272,7 +272,7 @@ def attach_wind_and_solar(n, costs, input_profiles, technologies, ppl, line_leng
             suptech = tech.split('-', 2)[0]
             if suptech == 'offwind':
                 underwater_fraction = ds['underwater_fraction'].to_pandas()
-                connection_cost = (line_length_factor *
+                connection_cost = (snakemake.config['lines']['length_factor'] *
                                    ds['average_distance'].to_pandas() *
                                    (underwater_fraction *
                                     costs.at[tech + '-connection-submarine', 'capital_cost'] +
@@ -595,7 +595,7 @@ def add_nice_carrier_names(n, config):
 if __name__ == "__main__":
     if 'snakemake' not in globals():
         from _helpers import mock_snakemake
-        snakemake = mock_snakemake('add_electricity')
+        snakemake = mock_snakemake('add_electricity', year="2015")
     configure_logging(snakemake)
 
     n = pypsa.Network(snakemake.input.base_network)
