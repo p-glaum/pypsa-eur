@@ -27,7 +27,7 @@ offwind-dc,2030,investment,1640,EUR/kWel,DEA https://ens.dk/en/our-services/proj
 offwind-dc-station,2030,investment,400,EUR/kWel,Haertel 2017; assuming one onshore and one offshore node + 13% learning reduction
 offwind-dc-connection-submarine,2030,investment,2000,EUR/MW/km,DTU report based on Fig 34 of https://ec.europa.eu/energy/sites/ener/files/documents/2014_nsog_report.pdf
 offwind-dc-connection-underground,2030,investment,1000,EUR/MW/km,Haertel 2017; average + 13% learning reduction
-offwind-float,2030,investment,2973,EUR/kWel,"C. Maienza 2020 A life cycle cost model for floating offshore wind farms;""Spar Buyo without cost for cabelin year not specified"""
+offwind-float,2030,investment,2350,EUR/kWel,https://doi.org/10.1016/j.adapen.2021.100067
 offwind-float-station,2030,investment,400,EUR/kWel,Haertel 2017; assuming one onshore and one offshore node + 13% learning reduction
 offwind-float-connection-submarine,2030,investment,2000,EUR/MW/km,DTU report based on Fig 34 of https://ec.europa.eu/energy/sites/ener/files/documents/2014_nsog_report.pdf
 offwind-float-connection-underground,2030,investment,1000,EUR/MW/km,"Haertel 2017; average + 13% learning reduction"""
@@ -48,7 +48,7 @@ oil,2030,investment,400,EUR/kWel,DIW DataDoc http://hdl.handle.net/10419/80348
 onwind,2030,FOM,2.450549,%/year,DEA https://ens.dk/en/our-services/projections-and-models/technology-data
 offwind-ac,2030,FOM,2.304878,%/year,DEA https://ens.dk/en/our-services/projections-and-models/technology-data
 offwind-dc,2030,FOM,2.304878,%/year,DEA https://ens.dk/en/our-services/projections-and-models/technology-data
-offwind-float,2030,FOM,1.31,%/year,C. Maienza 2020 A life cycle cost model for floating offshore wind farms ;Assumend lifetime 20a
+offwind-float,2030,FOM,1.15,%/year,https://doi.org/10.1016/j.adapen.2021.100067
 solar,2030,FOM,4.166667,%/year,DIW DataDoc http://hdl.handle.net/10419/80348
 solar-rooftop,2030,FOM,2,%/year,ETIP PV
 solar-utility,2030,FOM,3,%/year,ETIP PV
@@ -65,7 +65,7 @@ OCGT,2030,FOM,3.75,%/year,DIW DataDoc http://hdl.handle.net/10419/80348
 onwind,2030,VOM,2.3,EUR/MWhel,DEA https://ens.dk/en/our-services/projections-and-models/technology-data
 offwind-ac,2030,VOM,2.7,EUR/MWhel,DEA https://ens.dk/en/our-services/projections-and-models/technology-data
 offwind-dc,2030,VOM,2.7,EUR/MWhel,DEA https://ens.dk/en/our-services/projections-and-models/technology-data
-offwind-float,2030,VOM,0,EUR/MWhel,no information; included in FOM
+offwind-float,2030,VOM,3,EUR/MWhel,https://doi.org/10.1016/j.adapen.2021.100067
 solar,2030,VOM,0.01,EUR/MWhel,RES costs made up to fix curtailment order
 coal,2030,VOM,6,EUR/MWhel,DIW DataDoc http://hdl.handle.net/10419/80348 PC (Advanced/SuperC)
 lignite,2030,VOM,7,EUR/MWhel,DIW DataDoc http://hdl.handle.net/10419/80348

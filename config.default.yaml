@@ -152,7 +152,7 @@ renewable:
     # proxy for wake losses
     # from 10.1016/j.energy.2018.08.153
     # until done more rigorously in #153
-    corine: [44, 255]
+    #corine: [44, 255]
     natura: true
     min_depth: 60
     potential: simple # or conservative
@@ -223,6 +223,7 @@ costs:
     onwind: 0.015
     offwind-ac: 0.015
     offwind-dc: 0.015
+    offwind-float: 0.015
     hydro: 0.
     H2: 0.
     electrolysis: 0.
