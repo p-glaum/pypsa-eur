@@ -127,6 +127,46 @@ def _add_missing_carriers_from_costs(n, costs, carriers):
     emissions.index = missing_carriers
     n.import_components_from_dataframe(emissions, 'Carrier')
 
+def calculate_offwind_cost(WD, MW=12, no=54, D=236, HH=138, SP=343, DT=8):
+    """
+    Calculating offshore wind capex considering the average water depth of the region.
+    Equations and default values from DEA technology data (https://ens.dk/sites/ens.dk/files/Statistik/technology_catalogue_offshore_wind_march_2022_-_annex_to_prediction_of_performance_and_cost.pdf).
+
+    Parameters
+    ----------
+    WD : xarray
+        Average water depth of the different regions
+    MW : float
+        Power of the wind turbine in MW
+    no: int
+        Average number of wind turbines in farm
+    D: int
+        Rotor diameter of wind turbine in meters
+    HH: int
+        Hub height of wind turbine in meters
+    SP: int
+        Specific power of wind turbine in W/m2
+    DT: int
+        Distance between the wind turbine in number of rotor diameters
+
+    Returns
+    -------
+    capex: xarray
+        Capex of the wind turbine in the different regions
+    """
+    RA=(D/2)**2*np.pi
+    IA=DT*D
+    wind_turbine_invest=(-0.6*SP+750+(0.53*HH*RA+5500)/(1000*MW))*1.1
+    wind_turbine_install= 300*MW**(-0.6)
+    foundation_invest=(8*np.abs(WD)+30)*(1+(0.003*(350-np.min([400,SP]))))
+    foundation_install=2.5*np.abs(WD)+600*MW**(-0.6)
+    array_cable=IA*500/MW/1000 
+    turbine_transport=50
+    insurance=100
+    finance_cost=100
+    continences=50
+    capex=np.sum([wind_turbine_invest,wind_turbine_install, foundation_invest, foundation_install, array_cable, turbine_transport, insurance, finance_cost, continences])*1000 # in €/MW
+    return capex
 
 def load_costs(tech_costs, config, elec_config, Nyears=1.):
 
@@ -263,7 +303,6 @@ def update_transmission_costs(n, costs, length_factor=1.0):
 
 
 def attach_wind_and_solar(n, costs, input_profiles, technologies, line_length_factor=1):
-    from _helpers import calculate_offwind_cost
     # TODO: rename tech -> carrier, technologies -> carriers
     
     for tech in technologies:
@@ -285,7 +324,11 @@ def attach_wind_and_solar(n, costs, input_profiles, technologies, line_length_fa
                 grid_connection_cost=costs.at[tech + '-station', 'capital_cost'] + cable_cost
                 calculate_topology_cost=technologies[tech].get("calculate_topology_cost", False)
                 if calculate_topology_cost:
-                    turbine_cost=calculate_offwind_cost(ds["water_depth"].to_pandas())*(calculate_annuity(costs.at[tech, 'lifetime'], costs.at[tech, "discount rate"]) + costs.at[tech, "FOM"]/100.) * Nyears
+                    import atlite
+                    turbine_type=technologies[tech]["resource"]["turbine"]
+                    turbine_config= atlite.resource.get_windturbineconfig(turbine_type)
+                    kwargs={"WD":ds["water_depth"].to_pandas(), "MW":turbine_config["P"], "HH":turbine_config["hub_height"]}
+                    turbine_cost=calculate_offwind_cost(**kwargs)*(calculate_annuity(costs.at[tech, 'lifetime'], costs.at[tech, "discount rate"]) + costs.at[tech, "FOM"]/100.) * Nyears
                 else:
                     turbine_cost=costs.at[tech, 'capital_cost']
                 capital_cost = (turbine_cost + grid_connection_cost)
