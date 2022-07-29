@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: : 2017-2020 The PyPSA-Eur Authors
+# SPDX-FileCopyrightText: : 2017-2022 The PyPSA-Eur Authors
 #
 # SPDX-License-Identifier: MIT
 
@@ -391,7 +391,9 @@ def _set_countries_and_substations(n, config, country_shapes, offshore_shapes):
 
     countries = config['countries']
     country_shapes = gpd.read_file(country_shapes).set_index('name')['geometry']
-    offshore_shapes = gpd.read_file(offshore_shapes).set_index('name')['geometry']
+    # reindexing necessary for supporting empty geo-dataframes
+    offshore_shapes = gpd.read_file(offshore_shapes)
+    offshore_shapes = offshore_shapes.reindex(columns=['name', 'geometry']).set_index('name')['geometry']
     substation_b = buses['symbol'].str.contains('substation|converter station', case=False)
 
     def prefer_voltage(x, which):
@@ -594,4 +596,5 @@ if __name__ == "__main__":
                      snakemake.input.links_p_nom, snakemake.input.links_tyndp, snakemake.input.europe_shape, snakemake.input.country_shapes, snakemake.input.offshore_shapes,
                      snakemake.input.parameter_corrections, snakemake.config)
 
+    n.meta = snakemake.config
     n.export_to_netcdf(snakemake.output[0])

@@ -1,11 +1,181 @@
 ..
-  SPDX-FileCopyrightText: 2019-2021 The PyPSA-Eur Authors
+  SPDX-FileCopyrightText: 2019-2022 The PyPSA-Eur Authors
 
   SPDX-License-Identifier: CC-BY-4.0
 
 ##########################################
 Release Notes
 ##########################################
+
+Upcoming Release
+================
+
+* new feature
+
+PyPSA-Eur 0.5.0 (27th July 2022)
+=====================================
+
+**New Features**
+
+* New network topology extracted from the ENTSO-E interactive map.
+
+* Added existing renewable capacities for all countries based on IRENA
+  statistics (IRENASTAT) using new ``powerplantmatching`` version: 
+  * The corresponding ``config`` entries changed, cf. ``config.default.yaml``:	
+    * old: ``estimate_renewable_capacities_from_capacity_stats``	
+    * new: ``estimate_renewable_capacities``	
+  * The estimation is endabled by setting the subkey ``enable`` to ``True``.	
+  * Configuration of reference year for capacities can be configured (default:
+    ``2020``) 	
+  * The list of renewables provided by the OPSD database can be used as a basis,
+    using the tag ``from_opsd: True``. This adds the renewables from the
+    database and fills up the missing capacities with the heuristic
+    distribution. 	
+  * Uniform expansion limit of renewable build-up based on existing capacities
+    can be configured using ``expansion_limit`` option (default: ``false``;
+    limited to determined renewable potentials)	
+  * Distribution of country-level capacities proportional to maximum annual
+    energy yield for each bus region	
+  * The config key ``renewable_capacities_from_OPSD`` is deprecated and was moved
+    under the section, ``estimate_renewable_capacities``. To enable it, set
+    ``from_opsd`` to ``True``.	
+
+* Add operational reserve margin constraint analogous to `GenX implementation
+  <https://genxproject.github.io/GenX/dev/core/#Reserves>`_. Can be activated
+  with config setting ``electricity: operational_reserve:``.	
+
+* Implement country-specific  Energy Availability Factors (EAFs) for nuclear
+  power plants based on IAEA 2018-2020 reported country averages. These are
+  specified ``data/nuclear_p_max_pu.csv`` and translate to static ``p_max_pu``
+  values.
+
+* Add function to add global constraint on use of gas in :mod:`prepare_network`.
+  This can be activated by including the keyword ``CH4L`` in the ``{opts}``
+  wildcard which enforces the limit set in ``electricity: gaslimit:`` given in
+  MWh thermal. Alternatively, it is possible to append a number in the ``{opts}``
+  wildcard, e.g. ``CH4L200`` which limits the gas use to 200 TWh thermal.
+
+* Add option to alter marginal costs of a carrier through ``{opts}`` wildcard:
+  ``<carrier>+m<factor>``, e.g. ``gas+m2.5``, will multiply the default marginal
+  cost for gas by factor 2.5.
+
+* Hierarchical clustering was introduced. Distance metric is calculated from
+  renewable potentials on hourly (feature entry ends with ``-time``) or annual
+  (feature entry in config end with ``-cap``) values.
+  
+* Greedy modularity clustering was introduced. Distance metric is based on electrical distance taking into account the impedance of all transmission lines of the network.
+
+* Techno-economic parameters of technologies (e.g. costs and efficiencies) will
+  now be retrieved from a separate repository `PyPSA/technology-data
+  <https://github.com/pypsa/technology-data>`_ that collects assumptions from a
+  variety of sources. It is activated by default with ``enable:
+  retrieve_cost_data: true`` and controlled with ``costs: year:`` and ``costs:
+  version:``. The location of this data changed from ``data/costs.csv`` to
+  ``resources/costs.csv`` [`#184
+  <https://github.com/PyPSA/pypsa-eur/pull/184>`_].
+
+* A new section ``conventional`` was added to the config file. This section
+  contains configurations for conventional carriers.  
+
+* Add configuration option to implement arbitrary generator attributes for
+  conventional generation technologies.
+
+* Add option to set CO2 emission prices through ``{opts}`` wildcard: ``Ep<number>``,
+  e.g. ``Ep180``, will set the EUR/tCO2 price.
+
+**Changes**
+
+* Add an efficiency factor of 88.55% to offshore wind capacity factors as a
+  proxy for wake losses. More rigorous modelling is `planned
+  <https://github.com/PyPSA/pypsa-eur/issues/153>`_ [`#277
+  <https://github.com/PyPSA/pypsa-eur/pull/277>`_].
+
+* Following discussion in `#285
+  <https://github.com/PyPSA/pypsa-eur/issues/285>`_ we have disabled the
+  correction factor for solar PV capacity factors by default while satellite
+  data is used. A correction factor of 0.854337 is recommended if reanalysis
+  data like ERA5 is used.
+
+* The default deployment density of AC- and DC-connected offshore wind capacity
+  is reduced from 3 MW/sqkm to a more conservative estimate of 2 MW/sqkm [`#280
+  <https://github.com/PyPSA/pypsa-eur/pull/280>`_].
+
+* The inclusion of renewable carriers is now specified in the config entry
+  ``renewable_carriers``. Before this was done by commenting/uncommenting
+  sub-sections in the ``renewable`` config section. 
+
+* Now, all carriers that should be extendable have to be listed in the config
+  entry ``extendable_carriers``. Before, renewable carriers were always set to
+  be extendable. For backwards compatibility, the workflow is still looking at
+  the listed carriers under the ``renewable`` key. In the future, all of them
+  have to be listed under ``extendable_carriers``. 	
+
+* It is now possible to set conventional power plants as extendable by adding
+  them to the list of extendable ``Generator`` carriers in the config.	
+
+* Listing conventional carriers in ``extendable_carriers`` but not in
+  ``conventional_carriers``, sets the corresponding conventional power plants as
+  extendable without a lower capacity bound of today's capacities.	
+
+* Now, conventional carriers have an assigned capital cost by default.	
+
+* The ``build_year`` and ``lifetime`` column are now defined for conventional
+  power plants. 	
+
+* Use updated SARAH-2 and ERA5 cutouts with slightly wider scope to east and
+  additional variables.
+
+* Resource definitions for memory usage now follow `Snakemake standard resource
+  definition
+  <https://snakemake.readthedocs.io/en/stable/snakefiles/rules.html#standard-resources>`_
+  ``mem_mb`` rather than ``mem``.
+
+* The powerplants that have been shut down by 2021 are filtered out. 	
+
+* Updated historical `EIA hydro generation data <https://www.eia.gov/international/data/world>`_.
+
+* Network building is made deterministic by supplying a fixed random state to
+  network clustering routines.
+
+* Clustering strategies for generator and bus attributes can now be specified directly in the ``config.yaml``.
+
+* Iterative solving with impedance updates is skipped if there are no expandable
+  lines.
+
+* The unused argument ``simple_hvdc_costs`` in :mod:`add_electricity` was
+  removed.
+
+* Switch from Germany to Belgium for continuous integration and tutorial to save
+  resources.
+
+* It is now possible to skip the progressbar for land eligibility calculations for additional speedup.
+
+**Bugs and Compatibility**
+
+* Fix crs bug. Change crs 4236 to 4326.
+
+* ``powerplantmatching>=0.5.1`` is now required for ``IRENASTATS``.	
+
+* Update rasterio version to correctly calculate exclusion raster.
+
+* It is now possible to run the workflow with only landlocked countries.
+
+* Bugfixes for manual load adjustments across years.
+
+* Enable parallel computing with new dask version.
+
+* Restore compatibility of ``mock_snakemake`` with lastest Snakemake versions.
+
+* Script ``build_bus_regions``: move voronoi partition from vresutils to script.
+
+* Script ``add_electricity``: remove ``vresutils.costdata.annuity`` dependency.
+
+* Fix the plot_network snakemake rule.
+
+* Compatibility with pandas 1.4. Address deprecations.
+
+* Restore Windows compatibility by using ``shutil.move`` rather than ``mv``.
+
 
 Synchronisation Release - Ukraine and Moldova (17th March 2022)
 ===============================================================
@@ -40,35 +210,6 @@ This release is not on the ``master`` branch. It can be used with
 
   git clone https://github.com/pypsa/pypsa-eur
   git checkout synchronisation-release
-
-
-Upcoming Release
-================
-
-* Add an efficiency factor of 88.55% to offshore wind capacity factors
-  as a proxy for wake losses. More rigorous modelling is `planned <https://github.com/PyPSA/pypsa-eur/issues/153>`_
-  [`#277 <https://github.com/PyPSA/pypsa-eur/pull/277>`_].
-
-* The default deployment density of AC- and DC-connected offshore wind capacity is reduced from 3 MW/sqkm
-  to a more conservative estimate of 2 MW/sqkm [`#280 <https://github.com/PyPSA/pypsa-eur/pull/280>`_].
-
-* Following discussion in `#285 <https://github.com/PyPSA/pypsa-eur/issues/285>`_ we have disabled the
-  correction factor for solar PV capacity factors by default while satellite data is used.
-  A correction factor of 0.854337 is recommended if reanalysis data like ERA5 is used.
-
-* Resource definitions for memory usage now follow [Snakemake standard resource definition](https://snakemake.readthedocs.io/en/stable/snakefiles/rules.html#standard-resources) ```mem_mb`` rather than ``mem``.
-
-* Network building is made deterministic by supplying a fixed random state to network clustering routines.
-
-* New network topology extracted from the ENTSO-E interactive map.
-
-* The unused argument ``simple_hvdc_costs`` in :mod:`add_electricity` was removed.
-
-* Iterative solving with impedance updates is skipped if there are no expandable lines.
-
-* Switch from Germany to Belgium for continuous integration and tutorial to save resources.
-
-* Use updated SARAH-2 and ERA5 cutouts with slightly wider scope to east and additional variables.
 
 
 PyPSA-Eur 0.4.0 (22th September 2021)
@@ -185,7 +326,6 @@ PyPSA-Eur 0.4.0 (22th September 2021)
 * Propagate the solver log file name to the solver. Previously, the
   PyPSA network solving functions were not told about the solver logfile specified
   in the Snakemake file [`#247 <https://github.com/PyPSA/pypsa-eur/pull/247>`_]
-
 
 PyPSA-Eur 0.3.0 (7th December 2020)
 ===================================
@@ -362,7 +502,7 @@ Release Process
   ``conda env export -n pypsa-eur -f envs/environment.fixed.yaml --no-builds``
   from an up-to-date `pypsa-eur` environment.
 
-* Update version number in ``doc/conf.py`` and ``*config.*.yaml``.
+* Update version number in ``doc/conf.py``, ``CITATION.cff`` and ``*config.*.yaml``.
 
 * Open, review and merge pull request for branch ``release-v0.x.x``.
   Make sure to close issues and PRs or the release milestone with it (e.g. closes #X).

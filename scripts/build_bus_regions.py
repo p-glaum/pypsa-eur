@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: : 2017-2020 The PyPSA-Eur Authors
+# SPDX-FileCopyrightText: : 2017-2022 The PyPSA-Eur Authors
 #
 # SPDX-License-Identifier: MIT
 
@@ -42,7 +42,7 @@ Description
 """
 
 import logging
-from _helpers import configure_logging
+from _helpers import configure_logging, REGION_COLS
 
 import pypsa
 import os
@@ -54,7 +54,8 @@ from shapely import affinity
 from shapely.geometry import Point
 from sklearn.cluster import KMeans
 
-from vresutils.graph import voronoi_partition_pts
+from shapely.geometry import Polygon
+from scipy.spatial import Voronoi
 
 logger = logging.getLogger(__name__)
 
@@ -142,11 +143,58 @@ def build_voronoi_cells(shape, points):
             'geometry': voronoi_partition_pts(points, shape),
         })
     return split_region
+
 def save_to_geojson(s, fn):
     if os.path.exists(fn):
         os.unlink(fn)
     schema = {**gpd.io.file.infer_schema(s), 'geometry': 'Unknown'}
     s.to_file(fn, driver='GeoJSON', schema=schema)
+
+def voronoi_partition_pts(points, outline):
+    """
+    Compute the polygons of a voronoi partition of `points` within the
+    polygon `outline`. Taken from
+    https://github.com/FRESNA/vresutils/blob/master/vresutils/graph.py
+    Attributes
+    ----------
+    points : Nx2 - ndarray[dtype=float]
+    outline : Polygon
+    Returns
+    -------
+    polygons : N - ndarray[dtype=Polygon|MultiPolygon]
+    """
+
+    points = np.asarray(points)
+
+    if len(points) == 1:
+        polygons = [outline]
+    else:
+        xmin, ymin = np.amin(points, axis=0)
+        xmax, ymax = np.amax(points, axis=0)
+        xspan = xmax - xmin
+        yspan = ymax - ymin
+
+        # to avoid any network positions outside all Voronoi cells, append
+        # the corners of a rectangle framing these points
+        vor = Voronoi(np.vstack((points,
+                                 [[xmin-3.*xspan, ymin-3.*yspan],
+                                  [xmin-3.*xspan, ymax+3.*yspan],
+                                  [xmax+3.*xspan, ymin-3.*yspan],
+                                  [xmax+3.*xspan, ymax+3.*yspan]])))
+
+        polygons = []
+        for i in range(len(points)):
+            poly = Polygon(vor.vertices[vor.regions[vor.point_region[i]]])
+
+            if not poly.is_valid:
+                poly = poly.buffer(0)
+
+            poly = poly.intersection(outline)
+
+            polygons.append(poly)
+
+
+    return np.array(polygons, dtype=object)
 
 
 if __name__ == "__main__":
@@ -160,7 +208,8 @@ if __name__ == "__main__":
     n = pypsa.Network(snakemake.input.base_network)
 
     country_shapes = gpd.read_file(snakemake.input.country_shapes).set_index('name')['geometry']
-    offshore_shapes = gpd.read_file(snakemake.input.offshore_shapes).set_index('name')['geometry']
+    offshore_shapes = gpd.read_file(snakemake.input.offshore_shapes)
+    offshore_shapes = offshore_shapes.reindex(columns=REGION_COLS).set_index('name')['geometry']
 
     onshore_regions = []
     offshore_regions = []
@@ -207,6 +256,8 @@ if __name__ == "__main__":
         offshore_regions_c["area"]=offshore_regions_c.geometry.apply(lambda x: calculate_area(x))    
         offshore_regions.append(offshore_regions_c)
 
-    save_to_geojson(pd.concat(onshore_regions, ignore_index=True), snakemake.output.regions_onshore)
-
-    save_to_geojson(pd.concat(offshore_regions, ignore_index=True), snakemake.output.regions_offshore)
+    pd.concat(onshore_regions, ignore_index=True).to_file(snakemake.output.regions_onshore)
+    if offshore_regions:
+        pd.concat(offshore_regions, ignore_index=True).to_file(snakemake.output.regions_offshore)
+    else:
+        offshore_shapes.to_frame().to_file(snakemake.output.regions_offshore)

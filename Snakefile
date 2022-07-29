@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: : 2017-2020 The PyPSA-Eur Authors
+# SPDX-FileCopyrightText: : 2017-2022 The PyPSA-Eur Authors
 #
 # SPDX-License-Identifier: MIT
 
@@ -13,9 +13,8 @@ if not exists("config.yaml"):
 
 configfile: "config.yaml"
 
-COSTS="data/costs.csv"
+COSTS="resources/costs.csv"
 ATLITE_NPROCESSES = config['atlite'].get('nprocesses', 4)
-
 
 wildcard_constraints:
     simpl="[a-zA-Z0-9]*|all",
@@ -50,7 +49,7 @@ if config['enable'].get('prepare_links_p_nom', False):
 
 
 datafiles = ['ch_cantons.csv', 'je-e-21.03.02.xls', 
-            'eez/World_EEZ_v8_2014.shp', 'EIA_hydro_generation_2000_2014.csv', 
+            'eez/World_EEZ_v8_2014.shp', 
             'hydro_capacities.csv', 'naturalearth/ne_10m_admin_0_countries.shp', 
             'NUTS_2013_60M_SH/data/NUTS_RG_60M_2013.shp', 'nama_10r_3popgdp.tsv.gz', 
             'nama_10r_3gdp.tsv.gz', 'corine/g250_clc06_V18_5.tif']
@@ -78,7 +77,6 @@ rule build_load_data:
     output: "resources/load.csv"
     log: "logs/build_load_data.log"
     script: 'scripts/build_load_data.py'
-    
 
 rule build_powerplants:
     input:
@@ -164,6 +162,11 @@ if config['enable'].get('retrieve_cutout', True):
         output: "cutouts/{cutout}.nc"
         run: move(input[0], output[0])
 
+if config['enable'].get('retrieve_cost_data', True):
+    rule retrieve_cost_data:
+        input: HTTP.remote(f"raw.githubusercontent.com/PyPSA/technology-data/{config['costs']['version']}/outputs/costs_{config['costs']['year']}.csv", keep_local=True)
+        output: COSTS
+        run: move(input[0], output[0])
 
 if config['enable'].get('build_natura_raster', False):
     rule build_natura_raster:
@@ -186,7 +189,9 @@ rule build_renewable_profiles:
     input:
         base_network="networks/base.nc",
         corine="data/bundle/corine/g250_clc06_V18_5.tif",
-        natura="resources/natura.tiff",
+        natura=lambda w: ("resources/natura.tiff"
+                          if config["renewable"][w.technology]["natura"]
+                          else []),
         gebco=lambda w: ("data/bundle/GEBCO_2014_2D.nc"
                          if any(key in ["max_depth", "min_depth"] for key in config["renewable"][w.technology].keys())
                          else []),
@@ -208,7 +213,7 @@ rule build_renewable_profiles:
 rule build_hydro_profile:
     input:
         country_shapes='resources/country_shapes.geojson',
-        eia_hydro_generation='data/bundle/EIA_hydro_generation_2000_2014.csv',
+        eia_hydro_generation='data/eia_hydro_annual_generation.csv',
         cutout=f"cutouts/{config['renewable']['hydro']['cutout']}.nc" if "hydro" in config["renewable"] else "config['renewable']['hydro']['cutout'] not configured",
     output: 'resources/profile_hydro.nc'
     log: "logs/build_hydro_profile.log"
@@ -228,7 +233,8 @@ rule add_electricity:
         nuts3_shapes='resources/nuts3_shapes.geojson',
         gebco='data/bundle/GEBCO_2014_2D.nc',
         **{f"profile_{tech}": f"resources/profile_{tech}.nc"
-           for tech in config['renewable']}
+           for tech in config['renewable']},
+        **{f"conventional_{carrier}_{attr}": fn for carrier, d in config.get('conventional', {None: {}}).items() for attr, fn in d.items() if str(fn).startswith("data/")}, 
     output: "networks/elec.nc"
     log: "logs/add_electricity.log"
     benchmark: "benchmarks/add_electricity"
@@ -391,7 +397,7 @@ rule plot_summary:
 
 
 def input_plot_p_nom_max(w):
-    return [("networks/elec_s{simpl}{maybe_cluster}.nc"
+    return [("results/networks/elec_s{simpl}{maybe_cluster}.nc"
              .format(maybe_cluster=('' if c == 'full' else ('_' + c)), **w))
             for c in w.clusts.split(",")]
 

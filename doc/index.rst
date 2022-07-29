@@ -1,5 +1,5 @@
 ..
-  SPDX-FileCopyrightText: 2019-2020 The PyPSA-Eur Authors
+  SPDX-FileCopyrightText: 2019-2022 The PyPSA-Eur Authors
 
   SPDX-License-Identifier: CC-BY-4.0
 
@@ -21,10 +21,6 @@ PyPSA-Eur: An Open Optimisation Model of the European Transmission System
 
 .. image:: https://zenodo.org/badge/DOI/10.5281/zenodo.3520874.svg
     :target: https://doi.org/10.5281/zenodo.3520874
-
-.. image:: https://badges.gitter.im/PyPSA/community.svg
-    :target: https://gitter.im/PyPSA/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge
-    :alt: Chat on Gitter
 
 .. image:: https://img.shields.io/badge/snakemake-≥5.0.0-brightgreen.svg?style=flat
     :target: https://snakemake.readthedocs.io

@@ -1,5 +1,5 @@
 ..
-  SPDX-FileCopyrightText: 2019-2020 The PyPSA-Eur Authors
+  SPDX-FileCopyrightText: 2019-2022 The PyPSA-Eur Authors
 
   SPDX-License-Identifier: CC-BY-4.0
 
@@ -91,9 +91,6 @@ Specifies the temporal range to build an energy system model for as arguments to
    :widths: 25,7,22,30
    :file: configtables/electricity.csv
 
-.. warning::
-    Carriers in ``conventional_carriers`` must not also be in ``extendable_carriers``.
-
 .. _atlite_cf:
 
 ``atlite``
@@ -174,7 +171,7 @@ Define and specify the ``atlite.Cutout`` used for calculating renewable potentia
 .. literalinclude:: ../config.default.yaml
    :language: yaml
    :start-at:   hydro:
-   :end-before: lines:
+   :end-before: conventional:
 
 .. csv-table::
    :header-rows: 1
@@ -182,6 +179,17 @@ Define and specify the ``atlite.Cutout`` used for calculating renewable potentia
    :file: configtables/hydro.csv
 
 .. _lines_cf:
+
+``conventional``
+=============
+
+Define additional generator attribute for conventional carrier types. If a scalar value is given it is applied to all generators. However if a string starting with "data/" is given, the value is interpreted as a path to a csv file with country specific values. Then, the values are read in and applied to all generators of the given carrier in the given country. Note that the value(s) overwrite the existing values in the corresponding section of the ``generators`` dataframe.   
+
+.. literalinclude:: ../config.default.yaml
+   :language: yaml
+   :start-at:   conventional:
+   :end-before: lines:
+
 
 ``lines``
 =============
@@ -233,8 +241,7 @@ Define and specify the ``atlite.Cutout`` used for calculating renewable potentia
 
 .. literalinclude:: ../config.default.yaml
    :language: yaml
-   :start-at: load:
-   :end-before: costs:
+   :lines: 212-217
 
 .. csv-table::
    :header-rows: 1
@@ -249,7 +256,7 @@ Define and specify the ``atlite.Cutout`` used for calculating renewable potentia
 .. literalinclude:: ../config.default.yaml
    :language: yaml
    :start-after: scaling_factor:
-   :end-before: solving:
+   :end-before: clustering:
 
 .. csv-table::
    :header-rows: 1
@@ -257,8 +264,25 @@ Define and specify the ``atlite.Cutout`` used for calculating renewable potentia
    :file: configtables/costs.csv
 
 .. note::
-    To change cost assumptions in more detail (i.e. other than ``marginal_cost`` and ``capital_cost``), consider modifying cost assumptions directly in ``data/costs.csv`` as this is not yet supported through the config file.
-    You can also build multiple different cost databases. Make a renamed copy of ``data/costs.csv`` (e.g. ``data/costs-optimistic.csv``) and set the variable ``COSTS=data/costs-optimistic.csv`` in the ``Snakefile``.
+    To change cost assumptions in more detail (i.e. other than ``marginal_cost`` and ``capital_cost``), consider modifying cost assumptions directly in ``resources/costs.csv`` as this is not yet supported through the config file.
+    You can also build multiple different cost databases. Make a renamed copy of ``resources/costs.csv`` (e.g. ``data/costs-optimistic.csv``) and set the variable ``COSTS=data/costs-optimistic.csv`` in the ``Snakefile``.
+
+
+.. _clustering_cf:
+
+``clustering``
+==============
+
+.. literalinclude:: ../config.default.yaml
+   :language: yaml
+   :start-after:     co2:
+   :end-before: solving:
+
+.. csv-table::
+   :header-rows: 1
+   :widths: 25,7,22,30
+   :file: configtables/clustering.csv
+
 
 .. _solving_cf:
 

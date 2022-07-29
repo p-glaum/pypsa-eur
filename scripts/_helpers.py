@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: : 2017-2020 The PyPSA-Eur Authors
+# SPDX-FileCopyrightText: : 2017-2022 The PyPSA-Eur Authors
 #
 # SPDX-License-Identifier: MIT
 
@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
+REGION_COLS = ['geometry', 'name', 'x', 'y', 'country']
 
 def configure_logging(snakemake, skip_handlers=False):
     """
@@ -28,7 +29,7 @@ def configure_logging(snakemake, skip_handlers=False):
 
     import logging
 
-    kwargs = snakemake.config.get('logging', dict())
+    kwargs = snakemake.config.get('logging', dict()).copy()
     kwargs.setdefault("level", "INFO")
 
     if skip_handlers is False:
@@ -211,6 +212,22 @@ def progress_retrieve(url, file):
 
     urllib.request.urlretrieve(url, file, reporthook=dlProgress)
 
+def get_aggregation_strategies(aggregation_strategies):
+    # default aggregation strategies that cannot be defined in .yaml format must be specified within
+    # the function, otherwise (when defaults are passed in the function's definition) they get lost
+    # when custom values are specified in the config.
+
+    import numpy as np
+    from pypsa.networkclustering import _make_consense
+
+    bus_strategies = dict(country=_make_consense("Bus", "country"))
+    bus_strategies.update(aggregation_strategies.get("buses", {}))
+
+    generator_strategies = {'build_year': lambda x: 0, 'lifetime': lambda x: np.inf}
+    generator_strategies.update(aggregation_strategies.get("generators", {}))
+
+    return bus_strategies, generator_strategies
+
 
 def mock_snakemake(rulename, **wildcards):
     """
@@ -232,6 +249,7 @@ def mock_snakemake(rulename, **wildcards):
     import os
     from pypsa.descriptors import Dict
     from snakemake.script import Snakemake
+    from packaging.version import Version, parse
 
     script_dir = Path(__file__).parent.resolve()
     assert Path.cwd().resolve() == script_dir, \
@@ -241,7 +259,8 @@ def mock_snakemake(rulename, **wildcards):
         if os.path.exists(p):
             snakefile = p
             break
-    workflow = sm.Workflow(snakefile, overwrite_configfiles=[], rerun_triggers=[])
+    kwargs = dict(rerun_triggers=[]) if parse(sm.__version__) > Version("7.7.0") else {}
+    workflow = sm.Workflow(snakefile, overwrite_configfiles=[], **kwargs)
     workflow.include(snakefile)
     workflow.global_resources = {}
     rule = workflow.get_rule(rulename)

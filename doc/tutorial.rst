@@ -1,5 +1,5 @@
 ..
-  SPDX-FileCopyrightText: 2019-2020 The PyPSA-Eur Authors
+  SPDX-FileCopyrightText: 2019-2022 The PyPSA-Eur Authors
 
   SPDX-License-Identifier: CC-BY-4.0
 
@@ -47,7 +47,8 @@ The model can be adapted to only include selected countries (e.g. Belgium) inste
 
 .. literalinclude:: ../config.tutorial.yaml
    :language: yaml
-   :lines: 20
+   :start-at: countries:
+   :end-before: snapshots:
 
 Likewise, the example's temporal scope can be restricted (e.g. to a single month).
 
@@ -60,14 +61,14 @@ It is also possible to allow less or more carbon-dioxide emissions. Here, we lim
 
 .. literalinclude:: ../config.tutorial.yaml
    :language: yaml
-   :lines: 40,42
+   :lines: 35,37
 
 PyPSA-Eur also includes a database of existing conventional powerplants.
-We can select which types of powerplants we like to be included with fixed capacities:
+We can select which types of powerplants we like to be included:
 
 .. literalinclude:: ../config.tutorial.yaml
    :language: yaml
-   :lines: 40,56
+   :lines: 35,51
 
 To accurately model the temporal and spatial availability of renewables such as wind and solar energy, we rely on historical weather data.
 It is advisable to adapt the required range of coordinates to the selection of countries.
@@ -82,14 +83,14 @@ For example, we may want to use the ERA-5 dataset for solar and not the default 
 
 .. literalinclude:: ../config.tutorial.yaml
    :language: yaml
-   :lines: 67,110,111
+   :lines: 63,106,107
 
 Finally, it is possible to pick a solver. For instance, this tutorial uses the open-source solvers CBC and Ipopt and does not rely
 on the commercial solvers Gurobi or CPLEX (for which free academic licenses are available).
 
 .. literalinclude:: ../config.tutorial.yaml
    :language: yaml
-   :lines: 173,183,184
+   :lines: 188,198,199
 
 .. note::
 
@@ -215,7 +216,7 @@ A job (here ``simplify_network``) will display its attributes and normally some 
 
     [<DATETIME>]
     rule simplify_network:
-        input: networks/elec.nc, data/costs.csv, resources/regions_onshore.geojson, resources/regions_offshore.geojson
+        input: networks/elec.nc, resources/costs.csv, resources/regions_onshore.geojson, resources/regions_offshore.geojson
         output: networks/elec_s.nc, resources/regions_onshore_elec_s.geojson, resources/regions_offshore_elec_s.geojson, resources/clustermaps_elec_s.h5
         jobid: 3
         benchmark: benchmarks/simplify_network/elec_s
@@ -271,8 +272,6 @@ the wildcards given in ``scenario`` in the configuration file ``config.yaml`` ar
    :start-at: scenario:
    :end-before: countries:
 
-In this example we would not only solve a 6-node model of Germany but also a 2-node model.
-
 How to analyse solved networks?
 ===============================
 
@@ -284,4 +283,4 @@ The solved networks can be analysed just like any other PyPSA network (e.g. in J
 
     network = pypsa.Network("results/networks/elec_s_6_ec_lcopt_Co2L-24H.nc")
 
-For inspiration, read the `examples section in the PyPSA documentation <https://pypsa.readthedocs.io/en/latest/examples.html>`_.
+For inspiration, read the `examples section in the PyPSA documentation <https://pypsa.readthedocs.io/en/latest/examples-basic.html>`_.
