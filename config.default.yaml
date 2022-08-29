@@ -135,9 +135,11 @@ renewable:
     # proxy for wake losses
     # from 10.1016/j.energy.2018.08.153
     # until done more rigorously in #153
-    corine: [44, 255]
+    #corine: [44, 255]
     natura: true
+    ship_threshold: 400
     max_depth: 60
+    min_shore_distance: 1000
     max_shore_distance: 30000
     potential: simple # or conservative
     clip_p_max_pu: 1.e-2
@@ -152,8 +154,9 @@ renewable:
     # proxy for wake losses
     # from 10.1016/j.energy.2018.08.153
     # until done more rigorously in #153
-    corine: [44, 255]
+    #corine: [44, 255]
     natura: true
+    ship_threshold: 400
     max_depth: 60
     min_shore_distance: 30000
     potential: simple # or conservative
@@ -172,7 +175,10 @@ renewable:
     # until done more rigorously in #153
     #corine: [44, 255]
     natura: true
+    ship_threshold: 400
     min_depth: 60
+    max_depth: 1000
+    min_shore_distance: 1000
     potential: simple # or conservative
     clip_p_max_pu: 1.e-2
   solar:
@@ -204,9 +210,6 @@ renewable:
     hydro_max_hours: "energy_capacity_totals_by_country" # one of energy_capacity_totals_by_country, estimate_by_large_installations or a float
     clip_min_inflow: 1.0
 
-conventional: 
-  nuclear:
-    p_max_pu: "data/nuclear_p_max_pu.csv" # float of file name
 
 lines:
   types:
@@ -252,8 +255,7 @@ costs:
   marginal_cost:
     solar: 0.01
     onwind: 0.015
-    offwind-ac: 0.015
-    offwind-dc: 0.015
+    offwind: 0.015
     offwind-float: 0.015
     hydro: 0.
     H2: 0.
