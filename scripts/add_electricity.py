@@ -292,7 +292,7 @@ def update_transmission_costs(n, costs, length_factor=1.0):
     n.links.loc[dc_b, 'capital_cost'] = costs
 
 
-def attach_wind_and_solar(n, costs, input_profiles, technologies, extendable_carriers, line_length_factor=1):
+def attach_wind_and_solar(n, costs, input_profiles, technologies, extendable_carriers, config, line_length_factor=1):
     # TODO: rename tech -> carrier, technologies -> carriers
     _add_missing_carriers_from_costs(n, costs, technologies)
 
@@ -313,13 +313,13 @@ def attach_wind_and_solar(n, costs, input_profiles, technologies, extendable_car
                                     (1. - underwater_fraction) *
                                     costs.at[tech + '-connection-underground', 'capital_cost']))
                 grid_connection_cost=costs.at[tech + '-station', 'capital_cost'] + cable_cost
-                calculate_topology_cost=technologies[tech].get("calculate_topology_cost", False)
-                if calculate_topology_cost:
+                calculate_topology_cost=config[tech].get("calculate_topology_cost", False)
+                if calculate_topology_cost and tech != "offwind-float":
                     import atlite
-                    turbine_type=technologies[tech]["resource"]["turbine"]
-                    turbine_config= atlite.resource.get_windturbineconfig(turbine_type)
+                    turbine_type = config[tech]["resource"]["turbine"]
+                    turbine_config = atlite.resource.get_windturbineconfig(turbine_type)
                     kwargs={"WD":ds["water_depth"].to_pandas(), "MW":turbine_config["P"], "HH":turbine_config["hub_height"]}
-                    turbine_cost=calculate_offwind_cost(**kwargs)*(calculate_annuity(costs.at[tech, 'lifetime'], costs.at[tech, "discount rate"]) + costs.at[tech, "FOM"]/100.) * Nyears
+                    turbine_cost = calculate_offwind_cost(**kwargs) * (calculate_annuity(costs.at[suptech, 'lifetime'], costs.at[suptech, "discount rate"]) + costs.at[suptech, "FOM"] / 100.) * Nyears
                 else:
                     turbine_cost=costs.at[tech, 'capital_cost']
                 capital_cost = (turbine_cost + grid_connection_cost)
@@ -332,11 +332,11 @@ def attach_wind_and_solar(n, costs, input_profiles, technologies, extendable_car
                    p_nom_extendable=tech in extendable_carriers['Generator'],
                    p_nom_max=ds['p_nom_max'].to_pandas(),
                    weight=ds['weight'].to_pandas(),
-                   marginal_cost=costs.at[tech, 'marginal_cost'],
+                   marginal_cost=costs.at[suptech, 'marginal_cost'],
                    capital_cost=capital_cost,
                    grid_connection_cost=grid_connection_cost,
                    turbine_cost=turbine_cost,
-                   efficiency=costs.at[tech, 'efficiency'],
+                   efficiency=costs.at[suptech, 'efficiency'],
                    p_max_pu=ds['profile'].transpose('time', 'bus').to_pandas())
             else:
                 capital_cost = costs.at[tech, 'capital_cost']
@@ -656,7 +656,7 @@ if __name__ == "__main__":
     conventional_inputs = {k: v for k, v in snakemake.input.items() if k.startswith("conventional_")}
     attach_conventional_generators(n, costs, ppl, conventional_carriers, extendable_carriers, snakemake.config.get("conventional", {}), conventional_inputs)
 
-    attach_wind_and_solar(n, costs, snakemake.input, renewable_carriers, extendable_carriers, snakemake.config['lines']['length_factor'])
+    attach_wind_and_solar(n, costs, snakemake.input, renewable_carriers, extendable_carriers, snakemake.config['renewable'], snakemake.config['lines']['length_factor'])
 
     if 'hydro' in renewable_carriers:
         conf = snakemake.config['renewable']['hydro']

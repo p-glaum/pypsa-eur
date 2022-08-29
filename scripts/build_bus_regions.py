@@ -139,7 +139,7 @@ def build_voronoi_cells(shape, points):
     '''        
     split_region=gpd.GeoDataFrame({
             'x': points[:,0],
-            'y': points[:,0],
+            'y': points[:,1],
             'geometry': voronoi_partition_pts(points, shape),
         })
     return split_region
@@ -193,8 +193,8 @@ def voronoi_partition_pts(points, outline):
 
             polygons.append(poly)
 
-
-    return np.array(polygons, dtype=object)
+    #throws error if converted to np.array because multipolygons are split into polygons
+    return polygons
 
 
 if __name__ == "__main__":
@@ -241,8 +241,12 @@ if __name__ == "__main__":
         split_offshore_regions=snakemake.config["enable"].get('split_offshore_regions', False)
         offshore_regions_c.drop_duplicates(subset="geometry", inplace=True) # some regions are duplicated
         if not offshore_regions_c.empty and split_offshore_regions:
-            threshold=15000 #km2 threshold at which regions are splitted 
-            region_oversize=offshore_regions_c.geometry.map(lambda x: calculate_area(x)/threshold)
+            threshold_area=15000 #km2 threshold at which regions are splitted
+            threshold_length=10 #to split very long regions with area less than 15000 km2 
+            region_oversize=offshore_regions_c.geometry.map(lambda x: calculate_area(x)/threshold_area)
+            length_filter=(offshore_regions_c[region_oversize<1].geometry.length>threshold_length)
+            region_oversize.loc[length_filter[length_filter].index]=2
+                
             for bus, region in offshore_regions_c[region_oversize>1].iterrows():
                 shape=region.geometry
                 oversize_factor=region_oversize.loc[bus]
