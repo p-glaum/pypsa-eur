@@ -53,7 +53,7 @@ electricity:
     H2: 168 
 
   extendable_carriers:
-    Generator: [solar, onwind, offwind-ac, offwind-dc, OCGT]
+    Generator: [solar, onwind, offwind-ac, offwind-dc, offwind-float, OCGT]
     StorageUnit: [] # battery, H2
     Store: [battery, H2]
     Link: [] # H2 pipeline
@@ -344,6 +344,7 @@ plotting:
     'offshore wind ac' : "#6895dd"
     'offwind-dc' : "#74c6f2"
     'offshore wind dc' : "#74c6f2"
+    'offwind-float' : "#6895dd"
     "hydro" : "#08ad97"
     "hydro+PHS" : "#08ad97"
     "PHS" : "#08ad97"
