@@ -207,8 +207,11 @@ def _aggregate_and_move_components(n, busmap, connection_costs_to_bus, output,
 
     _, generator_strategies = get_aggregation_strategies(aggregation_strategies)
 
+    # do not automatically aggregate generators for each bus for offshore technologies
+    agg_carrier=carriers = n.generators.carrier.unique()
+    agg_carrier=np.setdiff1d(agg_carrier, ["offwind-ac", "offwind-dc", "offwind-float"])
     generators, generators_pnl = aggregategenerators(
-        n, busmap, custom_strategies=generator_strategies
+        n, busmap, carriers=agg_carrier, custom_strategies=generator_strategies
     )
 
     replace_components(n, "Generator", generators, generators_pnl)
