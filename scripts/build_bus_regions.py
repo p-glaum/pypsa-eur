@@ -271,10 +271,15 @@ if __name__ == "__main__":
                 "country": country,
             },
             index=offshore_locs.index,
+            crs="4326",
         )
         offshore_regions_c = offshore_regions_c.loc[offshore_regions_c.area > 1e-2]
-        offshore_regions_c.loc[:, "x"] = offshore_regions_c.centroid.x.values
-        offshore_regions_c.loc[:, "y"] = offshore_regions_c.centroid.y.values
+        offshore_regions_c.loc[:, "x"] = (
+            offshore_regions_c.to_crs("3035").centroid.to_crs("4326").x.values
+        )
+        offshore_regions_c.loc[:, "y"] = (
+            offshore_regions_c.to_crs("3035").centroid.to_crs("4326").y.values
+        )
         split_offshore_regions = snakemake.config["offshore_grid"].get(
             "split_offshore_regions", False
         )
@@ -284,13 +289,13 @@ if __name__ == "__main__":
         if not offshore_regions_c.empty and split_offshore_regions:
             threshold_area = 15000  # km2 threshold at which regions are split
             threshold_length = (
-                10  # to split very long regions with area less than 15000 km2
+                120  # to split very long regions with area less than 15000 km2
             )
             region_oversize = offshore_regions_c.geometry.map(
                 lambda x: calculate_area(x) / threshold_area
             )
             length_filter = (
-                offshore_regions_c[region_oversize < 1].geometry.length
+                offshore_regions_c[region_oversize < 1].to_crs("3035").length
                 > threshold_length
             )
             region_oversize.loc[length_filter[length_filter].index] = 2
