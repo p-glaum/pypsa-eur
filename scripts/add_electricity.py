@@ -135,10 +135,13 @@ def _add_missing_carriers_from_costs(n, costs, carriers):
     emissions.index = missing_carriers
     n.import_components_from_dataframe(emissions, "Carrier")
 
-def calculate_offwind_cost(WD, MW=12, no=54, D=236, HH=138, SP=343, DT=8):
+
+def calculate_offwind_cost(WD, MW=12, D=236, HH=138, SP=343, DT=8):
     """
-    Calculating offshore wind capex considering the average water depth of the region.
-    Equations and default values from DEA technology data (https://ens.dk/sites/ens.dk/files/Statistik/technology_catalogue_offshore_wind_march_2022_-_annex_to_prediction_of_performance_and_cost.pdf).
+    Calculating offshore wind capex considering the average water depth of the
+    region. Equations and default values from DEA technology data (https://ens.
+    dk/sites/ens.dk/files/Statistik/technology_catalogue_offshore_wind_march_20
+    22_-_annex_to_prediction_of_performance_and_cost.pdf).
 
     Parameters
     ----------
@@ -146,8 +149,6 @@ def calculate_offwind_cost(WD, MW=12, no=54, D=236, HH=138, SP=343, DT=8):
         Average water depth of the different regions
     MW : float
         Power of the wind turbine in MW
-    no: int
-        Average number of wind turbines in farm
     D: int
         Rotor diameter of wind turbine in meters
     HH: int
@@ -162,19 +163,41 @@ def calculate_offwind_cost(WD, MW=12, no=54, D=236, HH=138, SP=343, DT=8):
     capex: xarray
         Capex of the wind turbine in the different regions
     """
-    RA=(D/2)**2*np.pi
-    IA=DT*D
-    wind_turbine_invest=(-0.6*SP+750+(0.53*HH*RA+5500)/(1000*MW))*1.1
-    wind_turbine_install= 300*MW**(-0.6)
-    foundation_invest=(8*np.abs(WD)+30)*(1+(0.003*(350-np.min([400,SP]))))
-    foundation_install=2.5*np.abs(WD)+600*MW**(-0.6)
-    array_cable=IA*500/MW/1000 
-    turbine_transport=50
-    insurance=100
-    finance_cost=100
-    continences=50
-    capex=np.sum([wind_turbine_invest,wind_turbine_install, foundation_invest, foundation_install, array_cable, turbine_transport, insurance, finance_cost, continences])*1000 # in €/MW
+    RA = (D / 2) ** 2 * np.pi
+    IA = DT * D
+    wind_turbine_invest = (
+        -0.6 * SP + 750 + (0.53 * HH * RA + 5500) / (1000 * MW)
+    ) * 1.1
+    wind_turbine_install = 300 * MW ** (-0.6)
+    foundation_invest = (8 * np.abs(WD) + 30) * (
+        1 + (0.003 * (350 - np.min([400, SP])))
+    )
+    foundation_install = 2.5 * np.abs(WD) + 600 * MW ** (-0.6)
+    array_cable = IA * 500 / MW / 1000
+    turbine_transport = 50
+    insurance = 100
+    finance_cost = 100
+    continences = 50
+    development_cost = 0.02  # in % of capex
+    capex = (
+        np.sum(
+            [
+                wind_turbine_invest,
+                wind_turbine_install,
+                foundation_invest,
+                foundation_install,
+                array_cable,
+                turbine_transport,
+                insurance,
+                finance_cost,
+                continences,
+            ]
+        )
+        * (1 + development_cost)
+        * 1000
+    )  # in €/MW
     return capex
+
 
 def load_costs(tech_costs, config, elec_config, Nyears=1.0):
     # set all asset costs and other parameters
@@ -336,7 +359,13 @@ def update_transmission_costs(n, costs, length_factor=1.0):
 
 
 def attach_wind_and_solar(
-    n, costs, input_profiles, technologies, extendable_carriers, config, line_length_factor=1
+    n,
+    costs,
+    input_profiles,
+    technologies,
+    extendable_carriers,
+    config,
+    line_length_factor=1,
 ):
     # TODO: rename tech -> carrier, technologies -> carriers
     _add_missing_carriers_from_costs(n, costs, technologies)
@@ -349,53 +378,87 @@ def attach_wind_and_solar(
             if ds.indexes["bus"].empty:
                 continue
 
-            suptech = tech.split('-', 2)[0]
-            if suptech == 'offwind':
-                underwater_fraction = ds['underwater_fraction'].to_pandas()
-                cable_cost = (line_length_factor *
-                                ds['average_distance'].to_pandas() *
-                                (underwater_fraction *
-                                    costs.at[tech + '-connection-submarine', 'capital_cost'] +
-                                    (1. - underwater_fraction) *
-                                    costs.at[tech + '-connection-underground', 'capital_cost']))
-                grid_connection_cost=costs.at[tech + '-station', 'capital_cost'] + cable_cost
-                calculate_topology_cost=config[tech].get("calculate_topology_cost", False)
+            suptech = tech.split("-", 2)[0]
+            if suptech == "offwind":
+                underwater_fraction = ds["underwater_fraction"].to_pandas()
+                cable_cost = (
+                    line_length_factor
+                    * ds["average_distance"].to_pandas()
+                    * (
+                        underwater_fraction
+                        * costs.at[tech + "-connection-submarine", "capital_cost"]
+                        + (1.0 - underwater_fraction)
+                        * costs.at[tech + "-connection-underground", "capital_cost"]
+                    )
+                )
+                grid_connection_cost = (
+                    costs.at[tech + "-station", "capital_cost"] + cable_cost
+                )
+                calculate_topology_cost = config[tech].get(
+                    "calculate_topology_cost", False
+                )
                 if calculate_topology_cost and tech != "offwind-float":
                     import atlite
+
                     turbine_type = config[tech]["resource"]["turbine"]
                     turbine_config = atlite.resource.get_windturbineconfig(turbine_type)
-                    kwargs={"WD":ds["water_depth"].to_pandas(), "MW":turbine_config["P"], "HH":turbine_config["hub_height"]}
-                    turbine_cost = calculate_offwind_cost(**kwargs) * (calculate_annuity(costs.at[suptech, 'lifetime'], costs.at[suptech, "discount rate"]) + costs.at[suptech, "FOM"] / 100.) * Nyears
+                    kwargs = {
+                        "WD": ds["water_depth"].to_pandas(),
+                        "MW": turbine_config["P"],
+                        "HH": turbine_config["hub_height"],
+                    }
+                    turbine_cost = (
+                        calculate_offwind_cost(**kwargs)
+                        * (
+                            calculate_annuity(
+                                costs.at[suptech, "lifetime"],
+                                costs.at[suptech, "discount rate"],
+                            )
+                            + costs.at[suptech, "FOM"] / 100.0
+                        )
+                        * Nyears
+                    )
                 else:
-                    turbine_cost=costs.at[tech, 'capital_cost']
-                capital_cost = (turbine_cost + grid_connection_cost)
-                
-                logger.info("Added connection cost of {:0.0f}-{:0.0f} Eur/MW/a to {}"
-                            .format(cable_cost.min(), cable_cost.max(), tech))
-                n.madd("Generator", ds.indexes['bus'], ' ' + tech,
-                   bus=ds.indexes['bus'].str.split("_").str[0],
-                   carrier=tech,
-                   p_nom_extendable=tech in extendable_carriers['Generator'],
-                   p_nom_max=ds['p_nom_max'].to_pandas(),
-                   weight=ds['weight'].to_pandas(),
-                   marginal_cost=costs.at[suptech, 'marginal_cost'],
-                   capital_cost=capital_cost,
-                   grid_connection_cost=grid_connection_cost,
-                   turbine_cost=turbine_cost,
-                   efficiency=costs.at[suptech, 'efficiency'],
-                   p_max_pu=ds['profile'].transpose('time', 'bus').to_pandas())
+                    turbine_cost = costs.at[tech, "capital_cost"]
+                capital_cost = turbine_cost + grid_connection_cost
+
+                logger.info(
+                    "Added connection cost of {:0.0f}-{:0.0f} Eur/MW/a to {}".format(
+                        cable_cost.min(), cable_cost.max(), tech
+                    )
+                )
+                n.madd(
+                    "Generator",
+                    ds.indexes["bus"],
+                    " " + tech,
+                    bus=ds.indexes["bus"].str.split("_").str[0],
+                    carrier=tech,
+                    p_nom_extendable=tech in extendable_carriers["Generator"],
+                    p_nom_max=ds["p_nom_max"].to_pandas(),
+                    weight=ds["weight"].to_pandas(),
+                    marginal_cost=costs.at[suptech, "marginal_cost"],
+                    capital_cost=capital_cost,
+                    grid_connection_cost=grid_connection_cost,
+                    turbine_cost=turbine_cost,
+                    efficiency=costs.at[suptech, "efficiency"],
+                    p_max_pu=ds["profile"].transpose("time", "bus").to_pandas(),
+                )
             else:
-                capital_cost = costs.at[tech, 'capital_cost']
-                n.madd("Generator", ds.indexes['bus'], ' ' + tech,
-                   bus=ds.indexes['bus'].str.split("_").str[0],
-                   carrier=tech,
-                   p_nom_extendable=True,
-                   p_nom_max=ds['p_nom_max'].to_pandas(),
-                   weight=ds['weight'].to_pandas(),
-                   marginal_cost=costs.at[tech, 'marginal_cost'],
-                   capital_cost=capital_cost,
-                   efficiency=costs.at[tech, 'efficiency'],
-                   p_max_pu=ds['profile'].transpose('time', 'bus').to_pandas())
+                capital_cost = costs.at[tech, "capital_cost"]
+                n.madd(
+                    "Generator",
+                    ds.indexes["bus"],
+                    " " + tech,
+                    bus=ds.indexes["bus"].str.split("_").str[0],
+                    carrier=tech,
+                    p_nom_extendable=True,
+                    p_nom_max=ds["p_nom_max"].to_pandas(),
+                    weight=ds["weight"].to_pandas(),
+                    marginal_cost=costs.at[tech, "marginal_cost"],
+                    capital_cost=capital_cost,
+                    efficiency=costs.at[tech, "efficiency"],
+                    p_max_pu=ds["profile"].transpose("time", "bus").to_pandas(),
+                )
 
 
 def attach_conventional_generators(
@@ -817,7 +880,7 @@ if __name__ == "__main__":
         snakemake.input,
         renewable_carriers,
         extendable_carriers,
-        snakemake.config['renewable'],
+        snakemake.config["renewable"],
         snakemake.config["lines"]["length_factor"],
     )
 

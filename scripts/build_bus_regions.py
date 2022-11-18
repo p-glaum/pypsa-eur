@@ -46,27 +46,26 @@ import logging
 import os
 
 import geopandas as gpd
-from pyproj import Geod
-from shapely import affinity
-from shapely.geometry import Point
-from sklearn.cluster import KMeans
-
 import numpy as np
 import pandas as pd
 import pypsa
 from _helpers import REGION_COLS, configure_logging
+from pyproj import Geod
 from scipy.spatial import Voronoi
-from shapely.geometry import Polygon
+from shapely import affinity
+from shapely.geometry import Point, Polygon
+from sklearn.cluster import KMeans
 
 logger = logging.getLogger(__name__)
 
 
 def calculate_area(shape, ellipsoid="WGS84"):
     geod = Geod(ellps=ellipsoid)
-    return abs(geod.geometry_area_perimeter(shape)[0])/1e6
+    return abs(geod.geometry_area_perimeter(shape)[0]) / 1e6
+
 
 def cluster_points(n_clusters, point_list):
-    '''
+    """
     Clusters the inner points of a region into n_clusters.
 
     Parameters
@@ -79,21 +78,22 @@ def cluster_points(n_clusters, point_list):
     Returns
     -------
         Returns list of cluster centers.
-    '''        
+    """
     kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(point_list)
     return kmeans.cluster_centers_
 
 
 def fill_shape_with_points(shape, oversize_factor, num=10):
-    '''
-    Fills the shape of the offshore region with points. This is needed for splitting the regions into smaller regions.
+    """
+    Fills the shape of the offshore region with points. This is needed for
+    splitting the regions into smaller regions.
 
     Parameters
     ----------
-    shape : 
+    shape :
         Shape of the region.
     oversize_factor : int
-        Factor by which the original region is oversized. 
+        Factor by which the original region is oversized.
     num : int, optional
         Number of points added in the x and y direction.
 
@@ -101,55 +101,60 @@ def fill_shape_with_points(shape, oversize_factor, num=10):
     -------
     inner_points :
         Returns a list of points lying inside the shape.
-    '''        
-    
-    inner_points=list()
-    x_min, y_min, x_max, y_max= shape.bounds
-    iteration=0
+    """
+
+    inner_points = list()
+    x_min, y_min, x_max, y_max = shape.bounds
+    iteration = 0
     while True:
         for x in np.linspace(x_min, x_max, num=num):
             for y in np.linspace(y_min, y_max, num=num):
-                if Point(x,y).within(shape):
-                    inner_points.append((x,y))
+                if Point(x, y).within(shape):
+                    inner_points.append((x, y))
         if len(inner_points) > oversize_factor:
             break
         else:
-            #perturb bounds that not the same points are added again
-            num+=1
-            x_min += abs(x_max-x_min)*0.01
-            x_max -= abs(x_max-x_min)*0.01
-            y_min += abs(y_max-y_min)*0.01
-            y_max -= abs(y_max-y_min)*0.01
+            # perturb bounds that not the same points are added again
+            num += 1
+            x_min += abs(x_max - x_min) * 0.01
+            x_max -= abs(x_max - x_min) * 0.01
+            y_min += abs(y_max - y_min) * 0.01
+            y_max -= abs(y_max - y_min) * 0.01
     return inner_points
 
+
 def build_voronoi_cells(shape, points):
-    '''
+    """
     Builds Voronoi cells from given points in the given shape.
 
     Parameters
     ----------
-    shape : 
+    shape :
         Shape where to build the cells.
-    points : 
+    points :
         List of points.
 
     Returns
     -------
     split region
         Geopandas DataFrame containing the split regions.
-    '''        
-    split_region=gpd.GeoDataFrame({
-            'x': points[:,0],
-            'y': points[:,1],
-            'geometry': voronoi_partition_pts(points, shape),
-        })
+    """
+    split_region = gpd.GeoDataFrame(
+        {
+            "x": points[:, 0],
+            "y": points[:, 1],
+            "geometry": voronoi_partition_pts(points, shape),
+        }
+    )
     return split_region
+
 
 def save_to_geojson(s, fn):
     if os.path.exists(fn):
         os.unlink(fn)
-    schema = {**gpd.io.file.infer_schema(s), 'geometry': 'Unknown'}
-    s.to_file(fn, driver='GeoJSON', schema=schema)
+    schema = {**gpd.io.file.infer_schema(s), "geometry": "Unknown"}
+    s.to_file(fn, driver="GeoJSON", schema=schema)
+
 
 def voronoi_partition_pts(points, outline):
     """
@@ -164,8 +169,12 @@ def voronoi_partition_pts(points, outline):
     -------
     polygons : N - ndarray[dtype=Polygon|MultiPolygon]
     """
-
-    points = np.asarray(points)
+    # Convert shapes to equidistant projection shapes
+    outline = gpd.GeoSeries(outline, crs="4326").to_crs("3035")[0]
+    points = gpd.GeoSeries.from_xy(points[:, 0], points[:, 1], crs="4326").to_crs(
+        "3035"
+    )
+    points = np.asarray([points.x, points.y]).T
 
     if len(points) == 1:
         polygons = [outline]
@@ -202,7 +211,9 @@ def voronoi_partition_pts(points, outline):
 
             polygons.append(poly)
 
-    #throws error if converted to np.array because multipolygons are split into polygons
+        polygons = gpd.GeoSeries(polygons, crs="3035").to_crs(4326).values
+
+    # throws error if converted to np.array because multipolygons are split into polygons
     return polygons
 
 
@@ -258,29 +269,52 @@ if __name__ == "__main__":
                 "y": offshore_locs["y"],
                 "geometry": voronoi_partition_pts(offshore_locs.values, offshore_shape),
                 "country": country,
-            }
+            },
+            index=offshore_locs.index,
         )
         offshore_regions_c = offshore_regions_c.loc[offshore_regions_c.area > 1e-2]
-        split_offshore_regions=snakemake.config["enable"].get('split_offshore_regions', False)
-        offshore_regions_c.drop_duplicates(subset="geometry", inplace=True) # some regions are duplicated
+        offshore_regions_c.loc[:, "x"] = offshore_regions_c.centroid.x.values
+        offshore_regions_c.loc[:, "y"] = offshore_regions_c.centroid.y.values
+        split_offshore_regions = snakemake.config["enable"].get(
+            "split_offshore_regions", False
+        )
+        offshore_regions_c.drop_duplicates(
+            subset="geometry", inplace=True
+        )  # some regions are duplicated
         if not offshore_regions_c.empty and split_offshore_regions:
-            threshold_area=15000 #km2 threshold at which regions are splitted
-            threshold_length=10 #to split very long regions with area less than 15000 km2 
-            region_oversize=offshore_regions_c.geometry.map(lambda x: calculate_area(x)/threshold_area)
-            length_filter=(offshore_regions_c[region_oversize<1].geometry.length>threshold_length)
-            region_oversize.loc[length_filter[length_filter].index]=2
-                
-            for bus, region in offshore_regions_c[region_oversize>1].iterrows():
-                shape=region.geometry
-                oversize_factor=region_oversize.loc[bus]
-                inner_points=fill_shape_with_points(shape, oversize_factor)
-                cluster_centers=cluster_points(int(np.ceil(oversize_factor)), inner_points)
-                inner_regions=build_voronoi_cells(shape, cluster_centers)
-                inner_regions.set_index(pd.Index([f"{bus}_{i}" for i in inner_regions.index], name="Bus"), inplace=True)
-                inner_regions['name']=inner_regions.index
-                inner_regions['country']=country
-                offshore_regions_c=pd.concat([offshore_regions_c.drop(bus),inner_regions])
-        offshore_regions_c["area"]=offshore_regions_c.geometry.apply(lambda x: calculate_area(x))    
+            threshold_area = 15000  # km2 threshold at which regions are split
+            threshold_length = (
+                10  # to split very long regions with area less than 15000 km2
+            )
+            region_oversize = offshore_regions_c.geometry.map(
+                lambda x: calculate_area(x) / threshold_area
+            )
+            length_filter = (
+                offshore_regions_c[region_oversize < 1].geometry.length
+                > threshold_length
+            )
+            region_oversize.loc[length_filter[length_filter].index] = 2
+
+            for bus, region in offshore_regions_c[region_oversize > 1].iterrows():
+                shape = region.geometry
+                oversize_factor = region_oversize.loc[bus]
+                inner_points = fill_shape_with_points(shape, oversize_factor)
+                cluster_centers = cluster_points(
+                    int(np.ceil(oversize_factor)), inner_points
+                )
+                inner_regions = build_voronoi_cells(shape, cluster_centers)
+                inner_regions.set_index(
+                    pd.Index([f"{bus}_{i}" for i in inner_regions.index], name="Bus"),
+                    inplace=True,
+                )
+                inner_regions["name"] = inner_regions.index
+                inner_regions["country"] = country
+                offshore_regions_c = pd.concat(
+                    [offshore_regions_c.drop(bus), inner_regions]
+                )
+        offshore_regions_c["area"] = offshore_regions_c.geometry.apply(
+            lambda x: calculate_area(x)
+        ).astype("float64")
         offshore_regions.append(offshore_regions_c)
 
     pd.concat(onshore_regions, ignore_index=True).to_file(
