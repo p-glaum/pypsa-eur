@@ -289,13 +289,13 @@ if __name__ == "__main__":
         if not offshore_regions_c.empty and split_offshore_regions:
             threshold_area = 15000  # km2 threshold at which regions are split
             threshold_length = (
-                120  # to split very long regions with area less than 15000 km2
+                500  # to split very long regions with area less than 15000 km2
             )
             region_oversize = offshore_regions_c.geometry.map(
                 lambda x: calculate_area(x) / threshold_area
             )
             length_filter = (
-                offshore_regions_c[region_oversize < 1].to_crs("3035").length
+                offshore_regions_c[region_oversize < 1].to_crs("3035").length / 1000
                 > threshold_length
             )
             region_oversize.loc[length_filter[length_filter].index] = 2
