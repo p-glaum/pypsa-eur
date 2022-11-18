@@ -275,7 +275,7 @@ if __name__ == "__main__":
         offshore_regions_c = offshore_regions_c.loc[offshore_regions_c.area > 1e-2]
         offshore_regions_c.loc[:, "x"] = offshore_regions_c.centroid.x.values
         offshore_regions_c.loc[:, "y"] = offshore_regions_c.centroid.y.values
-        split_offshore_regions = snakemake.config["enable"].get(
+        split_offshore_regions = snakemake.config["offshore_grid"].get(
             "split_offshore_regions", False
         )
         offshore_regions_c.drop_duplicates(

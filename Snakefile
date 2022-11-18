@@ -510,7 +510,7 @@ rule build_offshore_grid:
 rule add_extra_components:
     input:
         network="networks/" + RDIR + "elec_s{simpl}_{clusters}_offgrid.nc"
-        if config["enable"]["build_offshore_gird"]
+        if config["offshore_grid"]["build_offshore_gird"]
         else "networks/" + RDIR + "elec_s{simpl}_{clusters}.nc",
         tech_costs=COSTS,
     output:

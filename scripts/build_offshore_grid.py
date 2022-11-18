@@ -87,64 +87,50 @@ def move_generators(offshore_regions, cluster_map=None):
 
 def add_offshore_connections():
     # Create line for every offshore bus and connect it to onshore buses
-    onshore_buses_coord = n.buses.loc[offshore_regions.bus.unique(), ["x", "y"]]
+    onshore_coords = n.buses.loc[offshore_regions.bus.unique(), ["x", "y"]]
     offshore_buses_coord = n.buses.loc[n.buses.index.str.contains("off"), ["x", "y"]]
     offshore_hub_coord = n.buses.loc[n.buses.index.str.contains("hub"), ["x", "y"]]
 
-    # works better than with closest neighbors. maybe only create graph like this for offshore buses:
-    cells, generators = libpysal.cg.voronoi_frames(
-        offshore_buses_coord.values, clip="convex hull"
-    )
-    delaunay = libpysal.weights.Rook.from_dataframe(cells)
-    delaunay_graph = delaunay.to_networkx()
-    delaunay_graph = nx.relabel_nodes(
-        delaunay_graph, dict(zip(delaunay_graph, offshore_buses_coord.index))
-    )
-    positions = dict(zip(delaunay_graph.nodes, offshore_buses_coord.values))
-
-    line_graph = nx.Graph()
     if offshore_hub_coord.empty:
         tree = BallTree(
             np.radians(offshore_buses_coord), leaf_size=40, metric="haversine"
         )
-        bus_dict = {
-            "onshore": onshore_buses_coord,
-            "offshore_bus": offshore_buses_coord,
-        }
         offshore_coords = offshore_buses_coord
     else:
         tree = BallTree(
             np.radians(offshore_hub_coord), leaf_size=40, metric="haversine"
         )
-        bus_dict = {"onshore": onshore_buses_coord, "offshore_hub": offshore_hub_coord}
         offshore_coords = offshore_hub_coord
 
-    for key, coord in bus_dict.items():
-        if coords.empty:
-            continue
+    coords = pd.concat([onshore_coords, offshore_coords])
+    coords["xy"] = list(map(tuple, (coords[["x", "y"]]).values))
 
-        if key == "onshore":
-            n_neighbors = 1
-        elif key == "offshore_bus":
-            n_neighbors = 4
-        elif key == "offshore_hub":
-            n_neighbors = 3
+    # works better than with closest neighbors. maybe only create graph like this for offshore buses:
+    cells, generators = libpysal.cg.voronoi_frames(
+        offshore_coords.values, clip="convex hull"
+    )
+    delaunay = libpysal.weights.Rook.from_dataframe(cells)
+    line_graph = delaunay.to_networkx()
+    line_graph = nx.relabel_nodes(
+        line_graph, dict(zip(line_graph, offshore_coords.index))
+    )
 
-        dist, ind = tree.query(np.radians(coord), k=n_neighbors)
-        dist *= 6371
+    _, ind = tree.query(np.radians(onshore_coords), k=1)
+    # Build line graph to connect all offshore nodes and
 
-        # Build line graph to connect all offshore nodes and
-
-        for i, bus in enumerate(coord.index):
-            for j in range(ind.shape[1]):
-                bus1 = offshore_coords.index[ind[i, j]]
-                dist1 = dist[i, j]
-                line_graph.add_edge(bus, bus1, weight=dist1)
+    for i, bus in enumerate(onshore_coords.index):
+        for j in range(ind.shape[1]):
+            bus1 = offshore_coords.index[ind[i, j]]
+            line_graph.add_edge(bus, bus1)
 
     lines_df = (
         nx.to_pandas_edgelist(line_graph)
         .rename(columns={"source": "bus0", "target": "bus1", "weight": "length"})
         .astype({"bus0": "string", "bus1": "string", "length": "float"})
+    )
+    lines_df.loc[:, "length"] = lines_df.apply(
+        lambda x: geodesic(coords.loc[x.bus0, "xy"], coords.loc[x.bus1, "xy"]).km,
+        axis=1,
     )
     lines_df.drop(lines_df.query("length==0").index, inplace=True)
     lines_df.index = "off_" + lines_df.index.astype("str")
@@ -297,10 +283,12 @@ if __name__ == "__main__":
 
     offshore_regions["yield"] = offshore_regions.eval("p_nom_max * cf")
 
-    cluster_offshore_buses = False
-    create_offshore_hubs = False
+    cluster_offshore_buses = snakemake.config["offshore_grid"][
+        "clusters_offshore_buses"
+    ]
+    create_offshore_hubs = snakemake.config["offshore_grid"]["create_offshore_hubs"]
     # cluster buses to simplify grid or to get hubs
-    if cluster_offshore_buses:
+    if cluster_offshore_buses["n_clusters"]:
         # distribute clusters according to energy yield and load of the connected onshore buses
         cluster_countries_weights = offshore_regions["yield"].groupby(
             offshore_regions.country
@@ -317,7 +305,7 @@ if __name__ == "__main__":
         ).dropna()
 
         n_clusters_country = distribute_offshore_cluster(
-            20, cluster_countries_weights, "gurobi"
+            cluster_offshore_buses["n_clusters"], cluster_countries_weights, "gurobi"
         )
         for country, n_clusters in n_clusters_country.iteritems():
             regions = offshore_regions.query("country==@country")
@@ -335,9 +323,32 @@ if __name__ == "__main__":
         cluster_centroids = center_of_mass(
             offshore_regions, groupby="cluster", weight="yield"
         )
-        cluster_map = offshore_regions.set_index("name").cluster
-    elif create_offshore_hubs:
-        p_nom_max = 100 * 1e3
+        cluster_map = offshore_regions.cluster
+    elif create_offshore_hubs["n_hubs"]:
+        intesections = get_region_intersections(offshore_regions.reset_index())
+        w = libpysal.weights.W(intesections)
+        model = Spenc(
+            offshore_regions,
+            w,
+            n_clusters=create_offshore_hubs["n_hubs"],
+            attrs_name=["cf"],
+        )
+        model.solve()
+        offshore_regions["hub"] = np.array(model.labels_)
+        hub_location = center_of_mass(offshore_regions, groupby="hub", weight="yield")
+        # connect only regions to hub which are closer to the hub than to onshore node
+        coords = coords.loc[offshore_regions.index, :]
+        coords["hub"] = list(
+            map(tuple, (hub_location.loc[offshore_regions.hub].values))
+        )
+        offshore_regions["distance_hub"] = coords.apply(
+            lambda x: geodesic(x.offshore, x.hub).km, axis=1
+        )
+        offshore_regions.loc[
+            offshore_regions["distance_hub"] > offshore_regions["distance"], "hub"
+        ] = None
+    elif create_offshore_hubs["p_nom_max"]:
+        p_nom_max = create_offshore_hubs["p_nom_max"] * 1e3
         intesections = get_region_intersections(offshore_regions.reset_index())
         w = libpysal.weights.W(intesections)
 
@@ -366,7 +377,7 @@ if __name__ == "__main__":
         # ax.scatter(hub_location["x"], hub_location["y"])
 
     # Add offshore buses for offshore regions
-    if cluster_offshore_buses:
+    if cluster_offshore_buses["n_clusters"]:
         n.madd(
             "Bus",
             names="off_" + cluster_centroids.index.values,
@@ -376,7 +387,7 @@ if __name__ == "__main__":
             substation_off=True,
             country=cluster_centroids.index.str[:2].values,
         )
-    elif create_offshore_hubs:
+    elif create_offshore_hubs["n_hubs"] or create_offshore_hubs["p_nom_max"]:
         n.madd(
             "Bus",
             names="hub_" + hub_location.index.astype("str").values,
