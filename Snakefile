@@ -343,7 +343,10 @@ rule build_renewable_profiles:
         ),
         gebco=lambda w: (
             "data/bundle/GEBCO_2014_2D.nc"
-            if any(key in ["max_depth", "min_depth"] for key in config["renewable"][w.technology].keys())
+            if any(
+                key in ["max_depth", "min_depth"]
+                for key in config["renewable"][w.technology].keys()
+            )
             else []
         ),
         ship_density=lambda w: (
@@ -414,7 +417,7 @@ rule add_electricity:
         geth_hydro_capacities="data/geth2015_hydro_capacities.csv",
         load="resources/" + RDIR + "load.csv",
         nuts3_shapes="resources/" + RDIR + "nuts3_shapes.geojson",
-        gebco='data/bundle/GEBCO_2014_2D.nc',
+        gebco="data/bundle/GEBCO_2014_2D.nc",
     output:
         "networks/" + RDIR + "elec.nc",
     log:
@@ -484,9 +487,31 @@ rule cluster_network:
         "scripts/cluster_network.py"
 
 
+rule build_offshore_grid:
+    input:
+        country_shapes="resources/" + RDIR + "country_shapes.geojson",
+        offshore_regions="resources/" + RDIR + "regions_offshore.geojson",
+        offshore_shapes="resources/" + RDIR + "offshore_shapes.geojson",
+        busmap_cluster="resources/" + RDIR + "busmap_elec_s{simpl}_{clusters}.csv",
+        busmap_simpl="resources/" + RDIR + "busmap_elec_s.csv",
+        clustered_network="networks/" + RDIR + "elec_s{simpl}_{clusters}.nc",
+        tech_costs=COSTS,
+    output:
+        network="networks/" + RDIR + "elec_s{simpl}_{clusters}_offgrid.nc",
+    log:
+        "logs/" + RDIR + "build_offshore_grid/elec_s{simpl}_{clusters}_offgrid.log",
+    threads: 1
+    resources:
+        mem_mb=1000,
+    script:
+        "scripts/build_offshore_grid.py"
+
+
 rule add_extra_components:
     input:
-        network="networks/" + RDIR + "elec_s{simpl}_{clusters}.nc",
+        network="networks/" + RDIR + "elec_s{simpl}_{clusters}_offgrid.nc"
+        if config["enable"]["build_offshore_gird"]
+        else "networks/" + RDIR + "elec_s{simpl}_{clusters}.nc",
         tech_costs=COSTS,
     output:
         "networks/" + RDIR + "elec_s{simpl}_{clusters}_ec.nc",
