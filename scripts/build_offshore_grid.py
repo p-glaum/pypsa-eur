@@ -12,12 +12,12 @@ import numpy as np
 import pandas as pd
 import pyomo.environ as po
 import pypsa
-from _helpers import REGION_COLS, configure_logging
+from _helpers import configure_logging
 from add_electricity import load_costs
 from geopy.distance import geodesic
 from scipy.spatial import Voronoi
-from shapely.geometry import Polygon
-from sklearn.neighbors import BallTree, NearestCentroid
+from shapely.geometry import LineString
+from sklearn.neighbors import BallTree
 from spopt.region import Spenc
 from spopt.region.maxp import MaxPHeuristic
 
@@ -110,24 +110,41 @@ def add_offshore_connections():
         offshore_coords.values, clip="convex hull"
     )
     delaunay = libpysal.weights.Rook.from_dataframe(cells)
-    line_graph = delaunay.to_networkx()
-    line_graph = nx.relabel_nodes(
-        line_graph, dict(zip(line_graph, offshore_coords.index))
+    offshore_line_graph = delaunay.to_networkx()
+    offshore_line_graph = nx.relabel_nodes(
+        offshore_line_graph, dict(zip(offshore_line_graph, offshore_coords.index))
     )
+
+    offshore_lines = nx.to_pandas_edgelist(offshore_line_graph)
+
+    # remove lines which intersect with onshore shapes
+    lines_filter = offshore_lines.apply(
+        lambda x: LineString(
+            [n.buses.loc[x.source, ["x", "y"]], n.buses.loc[x.target, ["x", "y"]]]
+        ),
+        axis=1,
+    )
+    onshore_shape = onshore_regions.unary_union
+    lines_filter = lines_filter.apply(lambda x: x.intersects(onshore_shape))
+    offshore_lines.drop(offshore_lines[lines_filter].index, inplace=True)
 
     _, ind = tree.query(np.radians(onshore_coords), k=1)
     # Build line graph to connect all offshore nodes and
 
+    on_line_graph = nx.Graph()
     for i, bus in enumerate(onshore_coords.index):
         for j in range(ind.shape[1]):
             bus1 = offshore_coords.index[ind[i, j]]
-            line_graph.add_edge(bus, bus1)
+            on_line_graph.add_edge(bus, bus1)
 
-    lines_df = (
-        nx.to_pandas_edgelist(line_graph)
-        .rename(columns={"source": "bus0", "target": "bus1", "weight": "length"})
-        .astype({"bus0": "string", "bus1": "string", "length": "float"})
-    )
+    onshore_lines = nx.to_pandas_edgelist(on_line_graph)
+
+    lines_df = pd.concat([offshore_lines, onshore_lines], axis=0, ignore_index=True)
+
+    lines_df = lines_df.rename(
+        columns={"source": "bus0", "target": "bus1", "weight": "length"}
+    ).astype({"bus0": "string", "bus1": "string", "length": "float"})
+
     lines_df.loc[:, "length"] = lines_df.apply(
         lambda x: geodesic(coords.loc[x.bus0, "xy"], coords.loc[x.bus1, "xy"]).km,
         axis=1,
@@ -211,7 +228,7 @@ if __name__ == "__main__":
     if "snakemake" not in globals():
         from _helpers import mock_snakemake
 
-        snakemake = mock_snakemake("build_offshore_grid", simpl="", clusters="58")
+        snakemake = mock_snakemake("build_offshore_grid", simpl="", clusters="60")
     configure_logging(snakemake)
 
     n = pypsa.Network(snakemake.input.clustered_network)
@@ -219,6 +236,10 @@ if __name__ == "__main__":
     country_shapes = gpd.read_file(snakemake.input.country_shapes).set_index("name")[
         "geometry"
     ]
+
+    onshore_regions = gpd.read_file(snakemake.input.onshore_regions)
+
+    offshore_regions = gpd.read_file(snakemake.input.offshore_regions)
 
     offshore_shapes = gpd.read_file(snakemake.input.offshore_shapes).set_index("name")[
         "geometry"
@@ -250,7 +271,6 @@ if __name__ == "__main__":
     )
 
     # offshore regions have more shapes than offshore generators have, don't know why, maybe rerun build renewable and add electricity and check again
-    offshore_regions = gpd.read_file(snakemake.input.offshore_regions)
     offshore_regions = offshore_regions.merge(
         offshore_generators, right_index=True, left_on="name"
     ).set_index("name")
@@ -260,7 +280,9 @@ if __name__ == "__main__":
     coords["onshore"] = list(
         map(tuple, (n.buses.loc[offshore_regions.bus, ["x", "y"]]).values)
     )
-    coords["offshore"] = list(map(tuple, (offshore_regions[["x", "y"]]).values))
+    coords["offshore"] = list(
+        map(tuple, (offshore_regions[["x_region", "y_region"]]).values)
+    )
     offshore_regions["distance"] = coords.apply(
         lambda x: geodesic(x.onshore, x.offshore).km, axis=1
     )
@@ -402,8 +424,8 @@ if __name__ == "__main__":
             "Bus",
             names="off_" + offshore_regions.index,
             v_nom=220,
-            x=offshore_regions["x"].values,
-            y=offshore_regions["y"].values,
+            x=offshore_regions["x_region"].values,
+            y=offshore_regions["y_region"].values,
             substation_off=True,
             country=offshore_regions["country"].values,
         )

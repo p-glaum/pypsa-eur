@@ -64,6 +64,14 @@ def calculate_area(shape, ellipsoid="WGS84"):
     return abs(geod.geometry_area_perimeter(shape)[0]) / 1e6
 
 
+def transform_points(points, source="4326", target="3035"):
+    points = gpd.GeoSeries.from_xy(points[:, 0], points[:, 1], crs=source).to_crs(
+        target
+    )
+    points = np.asarray([points.x, points.y]).T
+    return points
+
+
 def cluster_points(n_clusters, point_list):
     """
     Clusters the inner points of a region into n_clusters.
@@ -79,8 +87,12 @@ def cluster_points(n_clusters, point_list):
     -------
         Returns list of cluster centers.
     """
+    point_list = transform_points(np.array(point_list), source="4326", target="3035")
     kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(point_list)
-    return kmeans.cluster_centers_
+    cluster_centers = transform_points(
+        np.array(kmeans.cluster_centers_), source="3035", target="4326"
+    )
+    return cluster_centers
 
 
 def fill_shape_with_points(shape, oversize_factor, num=10):
@@ -130,20 +142,19 @@ def build_voronoi_cells(shape, points):
     Parameters
     ----------
     shape :
-        Shape where to build the cells.
+        Shape where to build the cells in 4326 crs.
     points :
-        List of points.
+        List of points in 4326 crs.
 
     Returns
     -------
     split region
         Geopandas DataFrame containing the split regions.
     """
+    cells = voronoi_partition_pts(points, shape)
     split_region = gpd.GeoDataFrame(
         {
-            "x": points[:, 0],
-            "y": points[:, 1],
-            "geometry": voronoi_partition_pts(points, shape),
+            "geometry": cells,
         }
     )
     return split_region
@@ -171,10 +182,7 @@ def voronoi_partition_pts(points, outline):
     """
     # Convert shapes to equidistant projection shapes
     outline = gpd.GeoSeries(outline, crs="4326").to_crs("3035")[0]
-    points = gpd.GeoSeries.from_xy(points[:, 0], points[:, 1], crs="4326").to_crs(
-        "3035"
-    )
-    points = np.asarray([points.x, points.y]).T
+    points = transform_points(points, source="4326", target="3035")
 
     if len(points) == 1:
         polygons = [outline]
@@ -274,12 +282,6 @@ if __name__ == "__main__":
             crs="4326",
         )
         offshore_regions_c = offshore_regions_c.loc[offshore_regions_c.area > 1e-2]
-        offshore_regions_c.loc[:, "x"] = (
-            offshore_regions_c.to_crs("3035").centroid.to_crs("4326").x.values
-        )
-        offshore_regions_c.loc[:, "y"] = (
-            offshore_regions_c.to_crs("3035").centroid.to_crs("4326").y.values
-        )
         split_offshore_regions = snakemake.config["offshore_grid"].get(
             "split_offshore_regions", False
         )
@@ -314,6 +316,9 @@ if __name__ == "__main__":
                 )
                 inner_regions["name"] = inner_regions.index
                 inner_regions["country"] = country
+                inner_regions.loc[:, ["x", "y"]] = offshore_regions_c.loc[
+                    bus, ["x", "y"]
+                ].values
                 offshore_regions_c = pd.concat(
                     [offshore_regions_c.drop(bus), inner_regions]
                 )
@@ -326,8 +331,10 @@ if __name__ == "__main__":
         snakemake.output.regions_onshore
     )
     if offshore_regions:
-        pd.concat(offshore_regions, ignore_index=True).to_file(
-            snakemake.output.regions_offshore
-        )
+        offshore_regions = pd.concat(offshore_regions, ignore_index=True)
+        centroid = offshore_regions.to_crs(3035).centroid.to_crs(4326)
+        offshore_regions["x_region"] = centroid.x
+        offshore_regions["y_region"] = centroid.y
+        offshore_regions.to_file(snakemake.output.regions_offshore)
     else:
         offshore_shapes.to_frame().to_file(snakemake.output.regions_offshore)

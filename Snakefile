@@ -490,6 +490,7 @@ rule cluster_network:
 rule build_offshore_grid:
     input:
         country_shapes="resources/" + RDIR + "country_shapes.geojson",
+        onshore_regions="resources/" + RDIR + "regions_onshore.geojson",
         offshore_regions="resources/" + RDIR + "regions_offshore.geojson",
         offshore_shapes="resources/" + RDIR + "offshore_shapes.geojson",
         busmap_cluster="resources/" + RDIR + "busmap_elec_s{simpl}_{clusters}.csv",
