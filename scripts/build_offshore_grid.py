@@ -87,6 +87,7 @@ def move_generators(offshore_regions, cluster_map=None):
     )
     rename_index = dict(zip(move_generators.index, prefix + move_generators.index))
     n.generators.rename(index=rename_index, inplace=True)
+    n.generators_t.p_max_pu.rename(columns=rename_index, inplace=True)
 
 
 def add_offshore_connections():
