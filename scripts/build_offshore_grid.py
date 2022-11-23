@@ -66,23 +66,27 @@ def move_generators(offshore_regions, cluster_map=None):
     # remove some buses from the move series as they could be attached to the same onshore bus, but are not within the sea region
     if cluster_map is not None:
         move_generators = move_generators.map(cluster_map)
-        move_generators = "off_" + move_generators
+        prefix = "off_"
+        move_generators = prefix + move_generators
     elif "hub" in offshore_regions.columns:
         move_generators = move_generators.map(
             offshore_regions.hub.astype("str")
         ).dropna()
-        move_generators = "hub_" + move_generators
+        prefix = "hub_"
+        move_generators = prefix + move_generators
     else:
-        move_generators = "off_" + move_generators
+        prefix = "off_"
+        move_generators = prefix + move_generators
 
     move_generators = move_generators[move_generators.isin(n.buses.index)]
     n.generators.loc[move_generators.index, "bus"] = move_generators
-
     # only consider turbine cost and substation cost for offshore generators connected to offshore grid
     n.generators.loc[move_generators.index, "capital_cost"] = (
         n.generators.loc[move_generators.index, "turbine_cost"]
         + costs.at["offwind-ac-station", "capital_cost"]
     )
+    rename_index = dict(zip(move_generators.index, prefix + move_generators.index))
+    n.generators.rename(index=rename_index, inplace=True)
 
 
 def add_offshore_connections():
