@@ -344,5 +344,4 @@ def mock_snakemake(rulename, **wildcards):
     for path in list(snakemake.log) + list(snakemake.output):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
 
-    os.chdir(script_dir)
     return snakemake
