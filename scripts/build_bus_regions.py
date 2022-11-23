@@ -221,7 +221,6 @@ def voronoi_partition_pts(points, outline):
 
         polygons = gpd.GeoSeries(polygons, crs="3035").to_crs(4326).values
 
-    # throws error if converted to np.array because multipolygons are split into polygons
     return polygons
 
 
