@@ -18,6 +18,7 @@ scenario:
   simpl: ['']
   ll: ['copt']
   clusters: [37, 128, 256, 512, 1024]
+  offgrid: ''
   opts: [Co2L-3H]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
@@ -278,14 +279,8 @@ costs:
 
 offshore_grid:
   split_offshore_regions: true #splits big offshore regions into smaller regions
-  build_offshore_gird: true
   countries: ["GB", "NO", "DE", "NL", "DK"]
   sea_region: none
-  clusters_offshore_buses:
-    n_clusters: ""
-  create_offshore_hubs:
-    n_hubs: ""
-    p_nom_max: "" # in GW
 
 clustering:
   simplify_network:

@@ -50,7 +50,8 @@ def center_of_mass(df, groupby=None, weight=None):
 
 def get_region_intersections(regions):
     intesections = dict()
-    for idx, region in regions.geometry.iteritems():
+    regions = regions.to_crs(3035).buffer(100)
+    for idx, region in regions.iteritems():
         intesections.update({idx: regions[regions.intersects(region)].index.tolist()})
     return intesections
 
@@ -233,212 +234,221 @@ if __name__ == "__main__":
     if "snakemake" not in globals():
         from _helpers import mock_snakemake
 
-        snakemake = mock_snakemake("build_offshore_grid", simpl="", clusters="60")
+        snakemake = mock_snakemake(
+            "build_offshore_grid", simpl="", clusters="60", offgrid="all"
+        )
     configure_logging(snakemake)
-
     n = pypsa.Network(snakemake.input.clustered_network)
 
-    country_shapes = gpd.read_file(snakemake.input.country_shapes).set_index("name")[
-        "geometry"
-    ]
+    offgrid = snakemake.wildcards["offgrid"]
+    if not offgrid:
+        n.export_to_netcdf(snakemake.output[0])
+    else:
+        country_shapes = gpd.read_file(snakemake.input.country_shapes).set_index(
+            "name"
+        )["geometry"]
 
-    onshore_regions = gpd.read_file(snakemake.input.onshore_regions)
+        onshore_regions = gpd.read_file(snakemake.input.onshore_regions)
 
-    offshore_regions = gpd.read_file(snakemake.input.offshore_regions)
+        offshore_regions = gpd.read_file(snakemake.input.offshore_regions)
 
-    offshore_shapes = gpd.read_file(snakemake.input.offshore_shapes).set_index("name")[
-        "geometry"
-    ]
+        offshore_shapes = gpd.read_file(snakemake.input.offshore_shapes).set_index(
+            "name"
+        )["geometry"]
 
-    Nyears = n.snapshot_weightings.objective.sum() / 8760.0
+        Nyears = n.snapshot_weightings.objective.sum() / 8760.0
 
-    costs = load_costs(
-        snakemake.input.tech_costs,
-        snakemake.config["costs"],
-        snakemake.config["electricity"],
-        Nyears,
-    )
+        costs = load_costs(
+            snakemake.input.tech_costs,
+            snakemake.config["costs"],
+            snakemake.config["electricity"],
+            Nyears,
+        )
 
-    offshore_generators = (
-        n.generators.filter(regex="offwind", axis=0).loc[:, ["p_nom_max", "bus"]].copy()
-    )
-    offshore_generators["cf"] = (
-        n.generators_t.p_max_pu.loc[:, offshore_generators.index]
-        .mul(n.snapshot_weightings.generators, axis=0)
-        .sum()
-        / 8760
-    )
-    offshore_generators["regions"] = offshore_generators.index.str.replace(
-        " offwind-\w+", "", regex=True
-    )
-    offshore_generators = offshore_generators.groupby("regions").agg(
-        {"p_nom_max": np.sum, "cf": np.mean, "bus": consense}
-    )
+        offshore_generators = (
+            n.generators.filter(regex="offwind", axis=0)
+            .loc[:, ["p_nom_max", "bus"]]
+            .copy()
+        )
+        offshore_generators["cf"] = (
+            n.generators_t.p_max_pu.loc[:, offshore_generators.index]
+            .mul(n.snapshot_weightings.generators, axis=0)
+            .sum()
+            / 8760
+        )
+        offshore_generators["regions"] = offshore_generators.index.str.replace(
+            " offwind-\w+", "", regex=True
+        )
+        offshore_generators = offshore_generators.groupby("regions").agg(
+            {"p_nom_max": np.sum, "cf": np.mean, "bus": consense}
+        )
 
-    # offshore regions have more shapes than offshore generators have, don't know why, maybe rerun build renewable and add electricity and check again
-    offshore_regions = offshore_regions.merge(
-        offshore_generators, right_index=True, left_on="name"
-    ).set_index("name")
+        # offshore regions have more shapes than offshore generators have, don't know why, maybe rerun build renewable and add electricity and check again
+        offshore_regions = offshore_regions.merge(
+            offshore_generators, right_index=True, left_on="name"
+        ).set_index("name")
 
-    # calculate distance to offshore region
-    coords = pd.DataFrame(index=offshore_regions.index)
-    coords["onshore"] = list(
-        map(tuple, (n.buses.loc[offshore_regions.bus, ["x", "y"]]).values)
-    )
-    coords["offshore"] = list(
-        map(tuple, (offshore_regions[["x_region", "y_region"]]).values)
-    )
-    offshore_regions["distance"] = coords.apply(
-        lambda x: geodesic(x.onshore, x.offshore).km, axis=1
-    )
+        # calculate distance to offshore region
+        coords = pd.DataFrame(index=offshore_regions.index)
+        coords["onshore"] = list(
+            map(tuple, (n.buses.loc[offshore_regions.bus, ["x", "y"]]).values)
+        )
+        coords["offshore"] = list(
+            map(tuple, (offshore_regions[["x_region", "y_region"]]).values)
+        )
+        offshore_regions["distance"] = coords.apply(
+            lambda x: geodesic(x.onshore, x.offshore).km, axis=1
+        )
 
-    # only build grid for buses in country list and/or in sea shape
-    countries = snakemake.config["offshore_grid"]["countries"]
-    offshore_regions = offshore_regions.loc[
-        offshore_regions.country.str.contains("|".join(countries))
-    ]
-
-    if snakemake.config["offshore_grid"]["sea_region"]:
-        sea_shape = gpd.read_file(snakemake.config["offshore_grid"]["sea_region"])
-        offshore_regions = offshore_regions[
-            offshore_regions.intersects(sea_shape.geometry.unary_union)
+        # only build grid for buses in country list and/or in sea shape
+        countries = snakemake.config["offshore_grid"]["countries"]
+        offshore_regions = offshore_regions.loc[
+            offshore_regions.country.str.contains("|".join(countries))
         ]
 
-    # TODO: culster for offshore hubs
-    # TODO: think about threshold criterion
-    offshore_regions = offshore_regions.query("distance>=50 & p_nom_max>1000")
+        if snakemake.config["offshore_grid"]["sea_region"]:
+            sea_shape = gpd.read_file(snakemake.config["offshore_grid"]["sea_region"])
+            offshore_regions = offshore_regions[
+                offshore_regions.intersects(sea_shape.geometry.unary_union)
+            ]
 
-    offshore_regions["yield"] = offshore_regions.eval("p_nom_max * cf")
+        # TODO: culster for offshore hubs
+        # TODO: think about threshold criterion
+        offshore_regions = offshore_regions.query("distance>=50 & p_nom_max>1000")
 
-    cluster_offshore_buses = snakemake.config["offshore_grid"][
-        "clusters_offshore_buses"
-    ]
-    create_offshore_hubs = snakemake.config["offshore_grid"]["create_offshore_hubs"]
-    # cluster buses to simplify grid or to get hubs
-    if cluster_offshore_buses["n_clusters"]:
-        # distribute clusters according to energy yield and load of the connected onshore buses
-        cluster_countries_weights = offshore_regions["yield"].groupby(
-            offshore_regions.country
-        ).sum().transform(lambda x: x / x.max()) + n.loads_t.p_set.sum()[
-            offshore_regions["bus"].unique()
-        ].groupby(
-            n.buses.country
-        ).sum().transform(
-            lambda x: x / x.max()
-        )
-        # dropna() needed, because it happened that in the load weight entries of other countries than the regarded occurred
-        cluster_countries_weights = cluster_countries_weights.transform(
-            lambda x: x / x.sum()
-        ).dropna()
+        offshore_regions["yield"] = offshore_regions.eval("p_nom_max * cf")
 
-        n_clusters_country = distribute_offshore_cluster(
-            cluster_offshore_buses["n_clusters"], cluster_countries_weights, "gurobi"
-        )
-        for country, n_clusters in n_clusters_country.iteritems():
-            regions = offshore_regions.query("country==@country")
-            if n_clusters == 1:
-                offshore_regions.loc[regions.index, "cluster"] = country + " 0"
-                continue
-            intesections = get_region_intersections(regions)
-            w = libpysal.weights.W(intesections)
-            model = Spenc(regions, w, n_clusters=n_clusters, attrs_name=["cf"])
-            model.solve()
-            offshore_regions.loc[regions.index, "cluster"] = (
-                country + " " + model.labels_.astype("str").astype("object")
+        # cluster buses to simplify grid or to get hubs
+        if "c" in offgrid:
+            n_clusters = int(offgrid.split("-")[0])
+            # distribute clusters according to energy yield and load of the connected onshore buses
+            cluster_countries_weights = offshore_regions["yield"].groupby(
+                offshore_regions.country
+            ).sum().transform(lambda x: x / x.max()) + n.loads_t.p_set.sum()[
+                offshore_regions["bus"].unique()
+            ].groupby(
+                n.buses.country
+            ).sum().transform(
+                lambda x: x / x.max()
             )
+            # dropna() needed, because it happened that in the load weight entries of other countries than the regarded occurred
+            cluster_countries_weights = cluster_countries_weights.transform(
+                lambda x: x / x.sum()
+            ).dropna()
 
-        cluster_centroids = center_of_mass(
-            offshore_regions, groupby="cluster", weight="yield"
-        )
-        cluster_map = offshore_regions.cluster
-    elif create_offshore_hubs["n_hubs"]:
-        intesections = get_region_intersections(offshore_regions.reset_index())
-        w = libpysal.weights.W(intesections)
-        model = Spenc(
-            offshore_regions,
-            w,
-            n_clusters=create_offshore_hubs["n_hubs"],
-            attrs_name=["cf"],
-        )
-        model.solve()
-        offshore_regions["hub"] = np.array(model.labels_)
-        hub_location = center_of_mass(offshore_regions, groupby="hub", weight="yield")
-        # connect only regions to hub which are closer to the hub than to onshore node
-        coords = coords.loc[offshore_regions.index, :]
-        coords["hub"] = list(
-            map(tuple, (hub_location.loc[offshore_regions.hub].values))
-        )
-        offshore_regions["distance_hub"] = coords.apply(
-            lambda x: geodesic(x.offshore, x.hub).km, axis=1
-        )
-        offshore_regions.loc[
-            offshore_regions["distance_hub"] > offshore_regions["distance"], "hub"
-        ] = None
-    elif create_offshore_hubs["p_nom_max"]:
-        p_nom_max = create_offshore_hubs["p_nom_max"] * 1e3
-        intesections = get_region_intersections(offshore_regions.reset_index())
-        w = libpysal.weights.W(intesections)
+            n_clusters_country = distribute_offshore_cluster(
+                n_clusters, cluster_countries_weights, "gurobi"
+            )
+            for country, n_cluster in n_clusters_country.iteritems():
+                regions = offshore_regions.query("country==@country")
+                if n_clusters == 1:
+                    offshore_regions.loc[regions.index, "cluster"] = country + " 0"
+                    continue
+                intesections = get_region_intersections(regions)
+                w = libpysal.weights.W(intesections)
+                model = Spenc(regions, w, n_clusters=n_cluster, attrs_name=["cf"])
+                model.solve()
+                offshore_regions.loc[regions.index, "cluster"] = (
+                    country + " " + model.labels_.astype("str").astype("object")
+                )
 
-        model = MaxPHeuristic(
-            offshore_regions.reset_index(),
-            w,
-            attrs_name=["cf"],
-            threshold_name="p_nom_max",
-            threshold=p_nom_max,
-        )
-        model.solve()
-        offshore_regions["hub"] = np.array(model.labels_)
-        hub_location = center_of_mass(offshore_regions, groupby="hub", weight="yield")
-        # connect only regions to hub which are closer to the hub than to onshore node
-        coords = coords.loc[offshore_regions.index, :]
-        coords["hub"] = list(
-            map(tuple, (hub_location.loc[offshore_regions.hub].values))
-        )
-        offshore_regions["distance_hub"] = coords.apply(
-            lambda x: geodesic(x.offshore, x.hub).km, axis=1
-        )
-        offshore_regions.loc[
-            offshore_regions["distance_hub"] > offshore_regions["distance"], "hub"
-        ] = None
-        # ax = offshore_regions.plot(column='cluster', categorical=True, edgecolor='w', legend=True, cmap="tab20c", figsize=(20,20))
-        # ax.scatter(hub_location["x"], hub_location["y"])
+            cluster_centroids = center_of_mass(
+                offshore_regions, groupby="cluster", weight="yield"
+            )
+            cluster_map = offshore_regions.cluster
+        elif "p-h" in offgrid:
+            p_nom_max = int(offgrid.split("-")[0]) * 1e3
+            intesections = get_region_intersections(offshore_regions.reset_index())
+            w = libpysal.weights.W(intesections)
 
-    # Add offshore buses for offshore regions
-    if cluster_offshore_buses["n_clusters"]:
-        n.madd(
-            "Bus",
-            names="off_" + cluster_centroids.index.values,
-            v_nom=220,
-            x=cluster_centroids["x"].values,
-            y=cluster_centroids["y"].values,
-            substation_off=True,
-            country=cluster_centroids.index.str[:2].values,
-        )
-    elif create_offshore_hubs["n_hubs"] or create_offshore_hubs["p_nom_max"]:
-        n.madd(
-            "Bus",
-            names="hub_" + hub_location.index.astype("str").values,
-            v_nom=220,
-            x=hub_location["x"].values,
-            y=hub_location["y"].values,
-            substation_off=True,
-        )
-        cluster_map = None
-    else:
-        n.madd(
-            "Bus",
-            names="off_" + offshore_regions.index,
-            v_nom=220,
-            x=offshore_regions["x_region"].values,
-            y=offshore_regions["y_region"].values,
-            substation_off=True,
-            country=offshore_regions["country"].values,
-        )
-        cluster_map = None
+            model = MaxPHeuristic(
+                offshore_regions.reset_index(),
+                w,
+                attrs_name=["cf"],
+                threshold_name="p_nom_max",
+                threshold=p_nom_max,
+            )
+            model.solve()
+            offshore_regions["hub"] = np.array(model.labels_)
+            hub_location = center_of_mass(
+                offshore_regions, groupby="hub", weight="yield"
+            )
+            # connect only regions to hub which are closer to the hub than to onshore node
+            coords = coords.loc[offshore_regions.index, :]
+            coords["hub"] = list(
+                map(tuple, (hub_location.loc[offshore_regions.hub].values))
+            )
+            offshore_regions["distance_hub"] = coords.apply(
+                lambda x: geodesic(x.offshore, x.hub).km, axis=1
+            )
+            offshore_regions.loc[
+                offshore_regions["distance_hub"] > offshore_regions["distance"], "hub"
+            ] = None
+            # ax = offshore_regions.plot(column='cluster', categorical=True, edgecolor='w', legend=True, cmap="tab20c", figsize=(20,20))
+            # ax.scatter(hub_location["x"], hub_location["y"])
+        elif "h" in offgrid:
+            n_clusters = int(offgrid.split("-")[0])
+            intesections = get_region_intersections(offshore_regions.reset_index())
+            w = libpysal.weights.W(intesections)
+            model = Spenc(
+                offshore_regions,
+                w,
+                n_clusters=n_clusters,
+                attrs_name=["cf"],
+            )
+            model.solve()
+            offshore_regions["hub"] = np.array(model.labels_)
+            hub_location = center_of_mass(
+                offshore_regions, groupby="hub", weight="yield"
+            )
+            # connect only regions to hub which are closer to the hub than to onshore node
+            coords = coords.loc[offshore_regions.index, :]
+            coords["hub"] = list(
+                map(tuple, (hub_location.loc[offshore_regions.hub].values))
+            )
+            offshore_regions["distance_hub"] = coords.apply(
+                lambda x: geodesic(x.offshore, x.hub).km, axis=1
+            )
+            offshore_regions.loc[
+                offshore_regions["distance_hub"] > offshore_regions["distance"], "hub"
+            ] = None
 
-    # move offshore generators to offshore buses
-    move_generators(offshore_regions, cluster_map)
+        # Add offshore buses for offshore regions
+        if "c" in offgrid:
+            n.madd(
+                "Bus",
+                names="off_" + cluster_centroids.index.values,
+                v_nom=220,
+                x=cluster_centroids["x"].values,
+                y=cluster_centroids["y"].values,
+                substation_off=True,
+                country=cluster_centroids.index.str[:2].values,
+            )
+        elif "h" in offgrid:
+            n.madd(
+                "Bus",
+                names="hub_" + hub_location.index.astype("str").values,
+                v_nom=220,
+                x=hub_location["x"].values,
+                y=hub_location["y"].values,
+                substation_off=True,
+            )
+            cluster_map = None
+        elif offgrid == "all":
+            n.madd(
+                "Bus",
+                names="off_" + offshore_regions.index,
+                v_nom=220,
+                x=offshore_regions["x_region"].values,
+                y=offshore_regions["y_region"].values,
+                substation_off=True,
+                country=offshore_regions["country"].values,
+            )
+            cluster_map = None
 
-    add_offshore_connections()
+        # move offshore generators to offshore buses
+        move_generators(offshore_regions, cluster_map)
 
-    n.export_to_netcdf(snakemake.output[0])
+        add_offshore_connections()
+
+        n.export_to_netcdf(snakemake.output[0])
