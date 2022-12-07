@@ -138,6 +138,10 @@ def set_transmission_limit(n, ll_type, factor, costs, Nyears=1):
         n.links.loc[links_dc_b, "p_nom_min"] = n.links.loc[links_dc_b, "p_nom"]
         n.links.loc[links_dc_b, "p_nom_extendable"] = True
 
+    if snakemake.wildcards["offgrid"]:
+        off_filter = n.lines.filter(like="off", axis=0).index
+        n.lines.loc[off_filter, "s_nom_extendable"] = True
+
     if factor != "opt":
         con_type = "expansion_cost" if ll_type == "c" else "volume_expansion"
         rhs = float(factor) * ref
@@ -243,7 +247,12 @@ if __name__ == "__main__":
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(
-            "prepare_network", simpl="", clusters="40", ll="v0.3", opts="Co2L-24H"
+            "prepare_network",
+            simpl="",
+            clusters="60",
+            offgrid="all",
+            ll="v1.0",
+            opts="Co2L-24H",
         )
     configure_logging(snakemake)
 
