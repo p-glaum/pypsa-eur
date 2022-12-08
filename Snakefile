@@ -27,7 +27,7 @@ ATLITE_NPROCESSES = config["atlite"].get("nprocesses", 4)
 wildcard_constraints:
     simpl="[a-zA-Z0-9]*|all",
     clusters="[0-9]+m?|all",
-    offgrid="[0-9]+(-[chp])?(-h)?|all",
+    offgrid="\d+-[ch]|\d+-p-h|all|",
     ll="(v|c)([0-9\.]+|opt|all)|all",
     opts="[-+a-zA-Z0-9\.]*",
 
@@ -40,14 +40,17 @@ rule cluster_all_networks:
 rule extra_components_all_networks:
     input:
         expand(
-            "networks/" + RDIR + "elec_s{simpl}_{clusters}_ec.nc", **config["scenario"]
+            "networks/" + RDIR + "elec_s{simpl}_{clusters}_off-{offgrid}_ec.nc",
+            **config["scenario"]
         ),
 
 
 rule prepare_all_networks:
     input:
         expand(
-            "networks/" + RDIR + "elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.nc",
+            "networks/"
+            + RDIR
+            + "elec_s{simpl}_{clusters}_off-{offgrid}_ec_l{ll}_{opts}.nc",
             **config["scenario"]
         ),
 
@@ -55,7 +58,9 @@ rule prepare_all_networks:
 rule solve_all_networks:
     input:
         expand(
-            "results/networks/" + RDIR + "elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.nc",
+            "results/networks/"
+            + RDIR
+            + "elec_s{simpl}_{clusters}_off-{offgrid}_ec_l{ll}_{opts}.nc",
             **config["scenario"]
         ),
 
