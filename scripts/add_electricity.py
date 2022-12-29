@@ -180,7 +180,7 @@ def calculate_offwind_cost(WD, MW=12, D=236, HH=138, SP=343, DT=8):
     continences = 50
     development_cost = 0.02  # in % of capex
     capex = (
-        np.sum(
+        sum(
             [
                 wind_turbine_invest,
                 wind_turbine_install,

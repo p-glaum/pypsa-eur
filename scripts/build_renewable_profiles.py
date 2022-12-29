@@ -263,12 +263,25 @@ if __name__ == "__main__":
         # lambda not supported for atlite + multiprocessing
         # use named function np.greater with partially frozen argument instead
         # and exclude areas where: -max_depth > grid cell depth
-        func = functools.partial(np.greater,-config['max_depth'])
-        excluder.add_raster(snakemake.input.gebco, codes=func, crs=4236, nodata=-1000, allow_no_overlap=True)
+        func = functools.partial(np.greater, -config["max_depth"])
+        excluder.add_raster(
+            snakemake.input.gebco,
+            codes=func,
+            crs=4236,
+            nodata=-1000,
+            allow_no_overlap=True,
+        )
 
     if "min_depth" in config:
-        func = functools.partial(np.greater,-config['min_depth'])
-        excluder.add_raster(snakemake.input.gebco, codes=func, crs=4236, nodata=-1000, invert=True, allow_no_overlap=True)
+        func = functools.partial(np.greater, -config["min_depth"])
+        excluder.add_raster(
+            snakemake.input.gebco,
+            codes=func,
+            crs=4236,
+            nodata=-1000,
+            invert=True,
+            allow_no_overlap=True,
+        )
 
     if "min_shore_distance" in config:
         buffer = config["min_shore_distance"]
@@ -339,30 +352,37 @@ if __name__ == "__main__":
         centre_of_mass.append(co.values.T @ (row / row.sum()))
 
     average_distance = xr.DataArray(average_distance, [buses])
-    centre_of_mass = xr.DataArray(centre_of_mass, [buses, ('spatial', ['x', 'y'])])
+    centre_of_mass = xr.DataArray(centre_of_mass, [buses, ("spatial", ["x", "y"])])
 
+    ds = xr.merge(
+        [
+            (correction_factor * profile).rename("profile"),
+            capacities.rename("weight"),
+            p_nom_max.rename("p_nom_max"),
+            potential.rename("potential"),
+            average_distance.rename("average_distance"),
+        ]
+    )
 
-    ds = xr.merge([(correction_factor * profile).rename('profile'),
-                    capacities.rename('weight'),
-                    p_nom_max.rename('p_nom_max'),
-                    potential.rename('potential'),
-                    average_distance.rename('average_distance')])
-
-    tech=snakemake.wildcards.technology
+    tech = snakemake.wildcards.technology
     if tech.startswith("offwind"):
-        if tech.endswith!= "float":
+        if tech.endswith != "float":
             with xr.open_dataset(snakemake.input.gebco) as gebco:
-                from rasterio.warp import Resampling
-                gebco=gebco.rename({"lon":"x", "lat":"y"})
-                water_depth=atlite.gis.regrid(gebco.elevation,cutout.data.x, cutout.data.y,resampling=Resampling.average)
-                water_depth=(water_depth*availability.where(availability!=0)).mean(["x", "y"])
-                ds['water_depth'] = xr.DataArray(water_depth, [buses]).fillna(0).clip(max=0)
-        logger.info('Calculate underwater fraction of connections.')
-        offshore_shape = gpd.read_file(snakemake.input['offshore_shapes']).unary_union
+                gebco = gebco.rename({"lon": "x", "lat": "y"})
+                water_depth = gebco.elevation.sel(
+                    x=centre_of_mass.loc[:, "x"],
+                    y=centre_of_mass.loc[:, "y"],
+                    method="nearest",
+                )
+                ds["water_depth"] = (
+                    xr.DataArray(water_depth, [buses]).fillna(0).clip(max=0)
+                )
+        logger.info("Calculate underwater fraction of connections.")
+        offshore_shape = gpd.read_file(snakemake.input["offshore_shapes"]).unary_union
         underwater_fraction = []
         for bus in buses:
             p = centre_of_mass.sel(bus=bus).data
-            line = LineString([p, regions.loc[bus, ["x", "y"]]])
+            line = LineString([p, regions.loc[bus, ["x", "y"]].astype("float")])
             frac = line.intersection(offshore_shape).length / line.length
             underwater_fraction.append(frac)
 

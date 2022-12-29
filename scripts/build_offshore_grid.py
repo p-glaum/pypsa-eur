@@ -126,7 +126,10 @@ def add_offshore_connections():
     # remove lines which intersect with onshore shapes
     lines_filter = offshore_lines.apply(
         lambda x: LineString(
-            [n.buses.loc[x.source, ["x", "y"]], n.buses.loc[x.target, ["x", "y"]]]
+            [
+                n.buses.loc[x.source, ["x", "y"]].astype("float"),
+                n.buses.loc[x.target, ["x", "y"]].astype("float"),
+            ]
         ),
         axis=1,
     )
