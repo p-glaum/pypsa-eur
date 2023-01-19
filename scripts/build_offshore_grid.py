@@ -14,7 +14,7 @@ import pyomo.environ as po
 import pypsa
 from _helpers import configure_logging
 from add_electricity import load_costs
-from geopy.distance import geodesic
+from pypsa.geo import haversine
 from scipy.spatial import Voronoi
 from shapely.geometry import LineString
 from sklearn.neighbors import BallTree
@@ -82,16 +82,54 @@ def move_generators(offshore_regions, cluster_map=None):
     move_generators = move_generators[move_generators.isin(n.buses.index)]
     n.generators.loc[move_generators.index, "bus"] = move_generators
     # only consider turbine cost and substation cost for offshore generators connected to offshore grid
-    n.generators.loc[move_generators.index, "capital_cost"] = (
-        n.generators.loc[move_generators.index, "turbine_cost"]
-        + costs.at["offwind-ac-station", "capital_cost"]
-    )
+    n.generators.loc[move_generators.index, "capital_cost"] = n.generators.loc[
+        move_generators.index
+    ].eval("turbine_cost + substation_cost")
     rename_index = dict(zip(move_generators.index, prefix + move_generators.index))
     n.generators.rename(index=rename_index, inplace=True)
     n.generators_t.p_max_pu.rename(columns=rename_index, inplace=True)
 
 
-def add_offshore_connections():
+def add_links(df):
+    # add lines only as DC links and don't consider AC anymore -> cost from DEA for AC links are currently taken but they are actually not tech specific
+
+    # attach cable cost AC for offshore grid lines
+    line_length_factor = snakemake.config["lines"]["length_factor"]
+    cable_cost = df["length"].apply(
+        lambda x: x
+        * line_length_factor
+        * costs.at["offwind-ac-connection-submarine", "capital_cost"]
+    )
+    n.madd(
+        "Link",
+        names=df.index,
+        carrier="DC",
+        bus0=df["bus0"].values,
+        bus1=df["bus1"].values,
+        length=df["length"].values,
+        capital_cost=cable_cost,
+    )
+
+
+def add_p2p_connections():
+    # Creates a link between offshore generators and connected onshore buses as point to point connection instead of directly assigning the offshore generator to the onshore bus
+
+    offshore_buses_name = n.buses[n.buses.index.str.contains("off")].index
+    onshore_buses_name = offshore_regions.bus
+    p2p_lines_df = pd.DataFrame(
+        {"bus0": offshore_buses_name, "bus1": onshore_buses_name}
+    ).reset_index(drop=True)
+    p2p_lines_df.index = "off_p2p_" + p2p_lines_df.index.astype("str")
+    p2p_lines_df.loc[:, "length"] = p2p_lines_df.apply(
+        lambda x: haversine(
+            n.buses.loc[x.bus0, ["x", "y"]], n.buses.loc[x.bus1, ["x", "y"]]
+        ),
+        axis=1,
+    )
+    add_links(p2p_lines_df)
+
+
+def add_offshore_bus_connections():
     # Create line for every offshore bus and connect it to onshore buses
     onshore_coords = n.buses.loc[offshore_regions.bus.unique(), ["x", "y"]]
     offshore_buses_coord = n.buses.loc[n.buses.index.str.contains("off"), ["x", "y"]]
@@ -155,47 +193,13 @@ def add_offshore_connections():
     ).astype({"bus0": "string", "bus1": "string", "length": "float"})
 
     lines_df.loc[:, "length"] = lines_df.apply(
-        lambda x: geodesic(coords.loc[x.bus0, "xy"], coords.loc[x.bus1, "xy"]).km,
+        lambda x: haversine(coords.loc[x.bus0, "xy"], coords.loc[x.bus1, "xy"]),
         axis=1,
     )
     lines_df.drop(lines_df.query("length==0").index, inplace=True)
     lines_df.index = "off_" + lines_df.index.astype("str")
 
-    if offshore_hub_coord.empty:
-        n.madd(
-            "Line",
-            names=lines_df.index,
-            v_nom=220,
-            bus0=lines_df["bus0"].values,
-            bus1=lines_df["bus1"].values,
-            length=lines_df["length"].values,
-            type="149-AL1/24-ST1A 110.0",
-        )
-        # attach cable cost AC for offshore grid lines
-        line_length_factor = snakemake.config["lines"]["length_factor"]
-        cable_cost = n.lines.loc[lines_df.index, "length"].apply(
-            lambda x: x
-            * line_length_factor
-            * costs.at["offwind-ac-connection-submarine", "capital_cost"]
-        )
-        n.lines.loc[lines_df.index, "capital_cost"] = cable_cost
-    else:
-        n.madd(
-            "Link",
-            names=lines_df.index,
-            carrier="DC",
-            bus0=lines_df["bus0"].values,
-            bus1=lines_df["bus1"].values,
-            length=lines_df["length"].values,
-        )
-        # attach cable cost DC for offshore grid lines
-        line_length_factor = snakemake.config["lines"]["length_factor"]
-        cable_cost = n.links.loc[lines_df.index, "length"].apply(
-            lambda x: x
-            * line_length_factor
-            * costs.at["offwind-dc-connection-submarine", "capital_cost"]
-        )
-        n.links.loc[lines_df.index, "capital_cost"] = cable_cost
+    add_links(lines_df)
 
 
 def distribute_offshore_cluster(n_clusters, cluster_countries_weights, solver_name):
@@ -238,13 +242,14 @@ if __name__ == "__main__":
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(
-            "build_offshore_grid", simpl="", clusters="60", offgrid="all"
+            "build_offshore_grid", simpl="", clusters="60", offgrid=""
         )
     configure_logging(snakemake)
     n = pypsa.Network(snakemake.input.clustered_network)
 
     offgrid = snakemake.wildcards["offgrid"]
-    if not offgrid:
+    offgrid_config = snakemake.config["offshore_grid"]
+    if not offgrid and not offgrid_config["p2p_connection"]:
         n.export_to_netcdf(snakemake.output[0])
     else:
         country_shapes = gpd.read_file(snakemake.input.country_shapes).set_index(
@@ -300,7 +305,7 @@ if __name__ == "__main__":
             map(tuple, (offshore_regions[["x_region", "y_region"]]).values)
         )
         offshore_regions["distance"] = coords.apply(
-            lambda x: geodesic(x.onshore, x.offshore).km, axis=1
+            lambda x: haversine(x.onshore, x.offshore), axis=1
         )
 
         # only build grid for buses in country list and/or in sea shape
@@ -382,7 +387,7 @@ if __name__ == "__main__":
                 map(tuple, (hub_location.loc[offshore_regions.hub].values))
             )
             offshore_regions["distance_hub"] = coords.apply(
-                lambda x: geodesic(x.offshore, x.hub).km, axis=1
+                lambda x: haversine(x.offshore, x.hub), axis=1
             )
             offshore_regions.loc[
                 offshore_regions["distance_hub"] > offshore_regions["distance"], "hub"
@@ -410,7 +415,7 @@ if __name__ == "__main__":
                 map(tuple, (hub_location.loc[offshore_regions.hub].values))
             )
             offshore_regions["distance_hub"] = coords.apply(
-                lambda x: geodesic(x.offshore, x.hub).km, axis=1
+                lambda x: haversine(x.offshore, x.hub), axis=1
             )
             offshore_regions.loc[
                 offshore_regions["distance_hub"] > offshore_regions["distance"], "hub"
@@ -437,7 +442,7 @@ if __name__ == "__main__":
                 substation_off=True,
             )
             cluster_map = None
-        elif offgrid == "all":
+        elif offgrid == "all" or offgrid == "":
             n.madd(
                 "Bus",
                 names="off_" + offshore_regions.index,
@@ -452,6 +457,11 @@ if __name__ == "__main__":
         # move offshore generators to offshore buses
         move_generators(offshore_regions, cluster_map)
 
-        add_offshore_connections()
-
+        if offgrid_config["p2p_connection"] and not offgrid:
+            add_p2p_connections()
+        elif offgrid and offgrid_config["p2p_connection"]:
+            add_p2p_connections()
+            add_offshore_bus_connections()
+        elif offgrid and not offshore_generators["p2p_connection"]:
+            add_offshore_bus_connections()
         n.export_to_netcdf(snakemake.output[0])

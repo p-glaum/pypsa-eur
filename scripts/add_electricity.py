@@ -411,10 +411,10 @@ def attach_wind_and_solar(
                         calculate_offwind_cost(**kwargs)
                         * (
                             calculate_annuity(
-                                costs.at[suptech, "lifetime"],
-                                costs.at[suptech, "discount rate"],
+                                costs.at[tech, "lifetime"],
+                                costs.at[tech, "discount rate"],
                             )
-                            + costs.at[suptech, "FOM"] / 100.0
+                            + costs.at[tech, "FOM"] / 100.0
                         )
                         * Nyears
                     )
@@ -438,8 +438,10 @@ def attach_wind_and_solar(
                     weight=ds["weight"].to_pandas(),
                     marginal_cost=costs.at[suptech, "marginal_cost"],
                     capital_cost=capital_cost,
-                    grid_connection_cost=grid_connection_cost,
+                    substation_cost=costs.at[tech + "-station", "capital_cost"],
+                    cable_cost=cable_cost,
                     turbine_cost=turbine_cost,
+                    distance=ds["average_distance"].to_pandas(),
                     efficiency=costs.at[suptech, "efficiency"],
                     p_max_pu=ds["profile"].transpose("time", "bus").to_pandas(),
                 )

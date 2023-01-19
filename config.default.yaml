@@ -280,6 +280,7 @@ costs:
 
 offshore_grid:
   split_offshore_regions: true #splits big offshore regions into smaller regions
+  p2p_connection: true
   countries: ["GB", "NO", "DE", "NL", "DK"]
   sea_region: none
 
