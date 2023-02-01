@@ -138,15 +138,9 @@ def set_transmission_limit(n, ll_type, factor, costs, Nyears=1):
         n.links.loc[links_dc_b, "p_nom_min"] = n.links.loc[links_dc_b, "p_nom"]
         n.links.loc[links_dc_b, "p_nom_extendable"] = True
 
-    # do not consider offshore lines in line constraint
-    off_line_filter = n.lines.filter(like="off", axis=0).index
-    off_link_filter = n.links.filter(like="off", axis=0).index
-    n.lines.loc[off_line_filter, "s_nom_extendable"] = True
+    # do not consider offshore links which are mainly under water
+    off_link_filter = (n.links.underwater_fraction >= 0.5)
     n.links.loc[off_link_filter, "p_nom_extendable"] = True
-    ref -= (
-        lines_s_nom[off_line_filter] @ n.lines.loc[off_line_filter, col]
-        + n.links.loc[off_link_filter, "p_nom"] @ n.links.loc[off_link_filter, col]
-    )
 
     if factor != "opt":
         con_type = "expansion_cost" if ll_type == "c" else "volume_expansion"
@@ -255,10 +249,10 @@ if __name__ == "__main__":
         snakemake = mock_snakemake(
             "prepare_network",
             simpl="",
-            clusters="60",
-            offgrid="all",
+            clusters="64",
+            offgrid="",
             ll="v1.0",
-            opts="Co2L-24H",
+            opts="Co2L-3H",
         )
     configure_logging(snakemake)
 

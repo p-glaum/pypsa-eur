@@ -98,7 +98,7 @@ def add_links(df):
     cable_cost = df["length"].apply(
         lambda x: x
         * line_length_factor
-        * costs.at["offwind-ac-connection-submarine", "capital_cost"]
+        * costs.at["HVDC submarine", "capital_cost"]
     )
     n.madd(
         "Link",
@@ -108,6 +108,7 @@ def add_links(df):
         bus1=df["bus1"].values,
         length=df["length"].values,
         capital_cost=cable_cost,
+        underwater_fraction=1,
     )
 
 
@@ -123,7 +124,7 @@ def add_p2p_connections():
     p2p_lines_df.loc[:, "length"] = p2p_lines_df.apply(
         lambda x: haversine(
             n.buses.loc[x.bus0, ["x", "y"]], n.buses.loc[x.bus1, ["x", "y"]]
-        ),
+        ).item(),
         axis=1,
     )
     add_links(p2p_lines_df)
@@ -193,7 +194,7 @@ def add_offshore_bus_connections():
     ).astype({"bus0": "string", "bus1": "string", "length": "float"})
 
     lines_df.loc[:, "length"] = lines_df.apply(
-        lambda x: haversine(coords.loc[x.bus0, "xy"], coords.loc[x.bus1, "xy"]),
+        lambda x: haversine(coords.loc[x.bus0, "xy"], coords.loc[x.bus1, "xy"]).item(),
         axis=1,
     )
     lines_df.drop(lines_df.query("length==0").index, inplace=True)
@@ -242,7 +243,7 @@ if __name__ == "__main__":
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(
-            "build_offshore_grid", simpl="", clusters="60", offgrid=""
+            "build_offshore_grid", simpl="", clusters="60", offgrid="all"
         )
     configure_logging(snakemake)
     n = pypsa.Network(snakemake.input.clustered_network)

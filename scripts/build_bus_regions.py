@@ -64,7 +64,7 @@ def calculate_area(shape, ellipsoid="WGS84"):
     return abs(geod.geometry_area_perimeter(shape)[0]) / 1e6
 
 
-def transform_points(points, source="4326", target="3035"):
+def transform_points(points, source="4326", target="4087"):
     points = gpd.GeoSeries.from_xy(points[:, 0], points[:, 1], crs=source).to_crs(
         target
     )
@@ -87,10 +87,10 @@ def cluster_points(n_clusters, point_list):
     -------
         Returns list of cluster centers.
     """
-    point_list = transform_points(np.array(point_list), source="4326", target="3035")
-    kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(point_list)
+    point_list = transform_points(np.array(point_list), source="4326", target="4087")
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init="auto").fit(point_list)
     cluster_centers = transform_points(
-        np.array(kmeans.cluster_centers_), source="3035", target="4326"
+        np.array(kmeans.cluster_centers_), source="4087", target="4326"
     )
     return cluster_centers
 
@@ -181,8 +181,8 @@ def voronoi_partition_pts(points, outline):
     polygons : N - ndarray[dtype=Polygon|MultiPolygon]
     """
     # Convert shapes to equidistant projection shapes
-    outline = gpd.GeoSeries(outline, crs="4326").to_crs("3035")[0]
-    points = transform_points(points, source="4326", target="3035")
+    outline = gpd.GeoSeries(outline, crs="4326").to_crs("4087")[0]
+    points = transform_points(points, source="4326", target="4087")
 
     if len(points) == 1:
         polygons = [outline]
@@ -219,7 +219,7 @@ def voronoi_partition_pts(points, outline):
 
             polygons.append(poly)
 
-        polygons = gpd.GeoSeries(polygons, crs="3035").to_crs(4326).values
+        polygons = gpd.GeoSeries(polygons, crs="4087").to_crs(4326).values
 
     return polygons
 
@@ -290,13 +290,13 @@ if __name__ == "__main__":
         if not offshore_regions_c.empty and split_offshore_regions:
             threshold_area = 15000  # km2 threshold at which regions are split
             threshold_length = (
-                500  # to split very long regions with area less than 15000 km2
+                1000  # to split very long regions with area less than 15000 km2
             )
             region_oversize = offshore_regions_c.geometry.map(
                 lambda x: calculate_area(x) / threshold_area
             )
             length_filter = (
-                offshore_regions_c[region_oversize < 1].to_crs("3035").length / 1000
+                offshore_regions_c[region_oversize < 1].convex_hull.to_crs("4087").length / 1000
                 > threshold_length
             )
             region_oversize.loc[length_filter[length_filter].index] = 2
@@ -331,7 +331,7 @@ if __name__ == "__main__":
     )
     if offshore_regions:
         offshore_regions = pd.concat(offshore_regions, ignore_index=True)
-        centroid = offshore_regions.to_crs(3035).centroid.to_crs(4326)
+        centroid = offshore_regions.to_crs(4087).centroid.to_crs(4326)
         offshore_regions["x_region"] = centroid.x
         offshore_regions["y_region"] = centroid.y
         offshore_regions.to_file(snakemake.output.regions_offshore)
