@@ -138,8 +138,8 @@ def set_transmission_limit(n, ll_type, factor, costs, Nyears=1):
         n.links.loc[links_dc_b, "p_nom_min"] = n.links.loc[links_dc_b, "p_nom"]
         n.links.loc[links_dc_b, "p_nom_extendable"] = True
 
-    # do not consider offshore links which are mainly under water
-    off_link_filter = (n.links.underwater_fraction >= 0.5)
+    # do not consider offshore links which are under water (0.1 because through clustering the fraction decreases)
+    off_link_filter = (n.links.underwater_fraction >= 0.1)
     n.links.loc[off_link_filter, "p_nom_extendable"] = True
 
     if factor != "opt":
