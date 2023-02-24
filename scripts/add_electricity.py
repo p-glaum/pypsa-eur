@@ -885,6 +885,18 @@ if __name__ == "__main__":
         snakemake.config["lines"]["length_factor"],
     )
 
+    if "hydro" in renewable_carriers:
+        conf = snakemake.config["renewable"]["hydro"]
+        attach_hydro(
+            n,
+            costs,
+            ppl,
+            snakemake.input.profile_hydro,
+            snakemake.input.hydro_capacities,
+            conf.pop("carriers", []),
+            **conf,
+        )
+
     if "estimate_renewable_capacities" not in snakemake.config["electricity"]:
         logger.warning(
             "Missing key `estimate_renewable_capacities` under config entry `electricity`. "

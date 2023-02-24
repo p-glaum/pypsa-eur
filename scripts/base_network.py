@@ -73,6 +73,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import pypsa
+from pypsa.geo import haversine
 import shapely
 import shapely.prepared
 import shapely.wkt
@@ -287,9 +288,8 @@ def _add_links_from_tyndp(buses, links, links_tyndp, europe_shape):
     links_tyndp = links_tyndp[["bus0", "bus1"]].assign(
         carrier="DC",
         p_nom=links_tyndp["Power (MW)"],
-        length=links_tyndp["Length (given) (km)"].fillna(
-            links_tyndp["Length (distance*1.2) (km)"]
-        ),
+        #get calculated distance to make it comparable with other built links
+        length=links_tyndp.apply(lambda x: haversine(buses.loc[x.bus0,["x","y"]], buses.loc[x.bus1,["x","y"]]).item(), axis=1),
         under_construction=True,
         underground=False,
         geometry=(
