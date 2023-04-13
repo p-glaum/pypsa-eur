@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# SPDX-FileCopyrightText: : 2017-2022 The PyPSA-Eur Authors
+# SPDX-FileCopyrightText: : 2017-2023 The PyPSA-Eur Authors
 #
 # SPDX-License-Identifier: MIT
 
@@ -57,18 +57,18 @@ Outputs
 
 - ``resources/regions_onshore_elec_s{simpl}.geojson``:
 
-    .. image:: ../img/regions_onshore_elec_s.png
+    .. image:: img/regions_onshore_elec_s.png
             :scale: 33 %
 
 - ``resources/regions_offshore_elec_s{simpl}.geojson``:
 
-    .. image:: ../img/regions_offshore_elec_s  .png
+    .. image:: img/regions_offshore_elec_s  .png
             :scale: 33 %
 
 - ``resources/busmap_elec_s{simpl}.csv``: Mapping of buses from ``networks/elec.nc`` to ``networks/elec_s{simpl}.nc``;
 - ``networks/elec_s{simpl}.nc``:
 
-    .. image:: ../img/elec_s.png
+    .. image:: img/elec_s.png
         :scale: 33 %
 
 Description
@@ -324,7 +324,6 @@ def simplify_links(n, costs, config, output, aggregation_strategies=dict()):
     )
 
     for lbl in labels.value_counts().loc[lambda s: s > 2].index:
-
         for b, buses, links in split_links(labels.index[labels == lbl]):
             if len(buses) <= 2:
                 continue

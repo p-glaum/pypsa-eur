@@ -243,7 +243,7 @@ if __name__ == "__main__":
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(
-            "build_offshore_grid", simpl="", clusters="60", offgrid="all"
+            "build_offshore_grid", simpl="", clusters="64", offgrid="all"
         )
     configure_logging(snakemake)
     n = pypsa.Network(snakemake.input.clustered_network)
@@ -321,7 +321,7 @@ if __name__ == "__main__":
                 offshore_regions.intersects(sea_shape.geometry.unary_union)
             ]
 
-        # TODO: culster for offshore hubs
+        # TODO: cluster for offshore hubs
         # TODO: think about threshold criterion
         offshore_regions = offshore_regions.query("distance>=50 & p_nom_max>1000")
 
