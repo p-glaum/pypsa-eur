@@ -54,3 +54,48 @@ include: "rules/build_electricity.smk"
 include: "rules/build_sector.smk"
 include: "rules/solve_electricity.smk"
 include: "rules/postprocess.smk"
+
+
+if config["foresight"] == "overnight":
+
+    include: "rules/solve_overnight.smk"
+
+
+if config["foresight"] == "myopic":
+
+    include: "rules/solve_myopic.smk"
+
+
+rule purge:
+    message:
+        "Purging generated resources, results and docs. Downloads are kept."
+    run:
+        rmtree("resources/", ignore_errors=True)
+        rmtree("results/", ignore_errors=True)
+        rmtree("doc/_build", ignore_errors=True)
+
+
+rule dag:
+    message:
+        "Creating DAG of workflow."
+    output:
+        dot=RESOURCES + "dag.dot",
+        pdf=RESOURCES + "dag.pdf",
+        png=RESOURCES + "dag.png",
+    conda:
+        "envs/environment.yaml"
+    shell:
+        """
+        snakemake --rulegraph all | sed -n "/digraph/,\$p" > {output.dot}
+        dot -Tpdf -o {output.pdf} {output.dot}
+        dot -Tpng -o {output.png} {output.dot}
+        """
+
+
+rule doc:
+    message:
+        "Build documentation."
+    output:
+        directory("doc/_build"),
+    shell:
+        "make -C doc html"
