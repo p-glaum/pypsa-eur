@@ -72,7 +72,7 @@ enable:
   prepare_links_p_nom: false
   retrieve_databundle: true
   retrieve_sector_databundle: true
-  retrieve_cost_data: true
+  retrieve_cost_data: false
   build_cutout: false
   retrieve_cutout: true
   build_natura_raster: false
@@ -718,7 +718,8 @@ solving:
     cbc-default: {} # Used in CI
     glpk-default: {} # Used in CI
 
-  mem: 30000 #memory in MB; 20 GB enough for 50+B+I+H2; 100 GB for 181+B+I+H2
+  mem: 100000 #memory in MB; 20 GB enough for 50+B+I+H2; 100 GB for 181+B+I+H2
+  time: "50:00:00"
 
 
 plotting:
