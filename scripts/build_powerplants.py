@@ -85,7 +85,6 @@ from powerplantmatching.export import map_country_bus
 
 logger = logging.getLogger(__name__)
 
-
 def add_custom_powerplants(ppl, custom_powerplants, custom_ppl_query=False):
     if not custom_ppl_query:
         return ppl

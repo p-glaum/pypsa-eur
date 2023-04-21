@@ -14,8 +14,8 @@ from snakemake.utils import min_version
 min_version("7.7")
 
 
-if not exists("config.yaml"):
-    copyfile("config.default.yaml", "config.yaml")
+# if not exists("config.yaml"):
+#     copyfile("config.default.yaml", "config.yaml")
 
 
 configfile: "config.yaml"

@@ -135,7 +135,7 @@ def _add_missing_carriers_from_costs(n, costs, carriers):
     n.import_components_from_dataframe(emissions, "Carrier")
 
 
-def calculate_offwind_cost(WD, MW=12, D=236, HH=138, SP=343, DT=8):
+def calculate_offwind_cost(WD, MW=12, RD=236, HH=138, SP=343, DT=8):
     """
     Calculating offshore wind capex considering the average water depth of the
     region. Equations and default values from DEA technology data (https://ens.
@@ -148,7 +148,7 @@ def calculate_offwind_cost(WD, MW=12, D=236, HH=138, SP=343, DT=8):
         Average water depth of the different regions
     MW : float
         Power of the wind turbine in MW
-    D: int
+    RD: int
         Rotor diameter of wind turbine in meters
     HH: int
         Hub height of wind turbine in meters
@@ -162,34 +162,34 @@ def calculate_offwind_cost(WD, MW=12, D=236, HH=138, SP=343, DT=8):
     capex: xarray
         Capex of the wind turbine in the different regions
     """
-    RA = (D / 2) ** 2 * np.pi
-    IA = DT * D
+    RA = (RD / 2) ** 2 * np.pi
+    IA = DT * RD
     wind_turbine_invest = (
-        -0.6 * SP + 750 + (0.53 * HH * RA + 5500) / (1000 * MW)
+        -0.5 * SP + 750 + (0.53 * HH * RA + 5500) / (1000 * MW)
     ) * 1.1
     wind_turbine_install = 300 * MW ** (-0.6)
-    foundation_invest = (8 * np.abs(WD) + 30) * (
+    foundation_equipment_cost = (8 * np.abs(WD) + 30) * (
         1 + (0.003 * (350 - np.min([400, SP])))
     )
-    foundation_install = 2.5 * np.abs(WD) + 600 * MW ** (-0.6)
+    foundation_installation = 2.5 * np.abs(WD) + 600 * MW ** (-0.6)
     array_cable = IA * 500 / MW / 1000
     turbine_transport = 50
     insurance = 100
     finance_cost = 100
-    continences = 50
+    contingences = 50
     development_cost = 0.02  # in % of capex
     capex = (
         sum(
             [
                 wind_turbine_invest,
                 wind_turbine_install,
-                foundation_invest,
-                foundation_install,
+                foundation_equipment_cost,
+                foundation_installation,
                 array_cable,
                 turbine_transport,
                 insurance,
                 finance_cost,
-                continences,
+                contingences,
             ]
         )
         * (1 + development_cost)

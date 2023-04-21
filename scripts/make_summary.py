@@ -649,7 +649,7 @@ def make_summaries(networks_dict):
     ]
 
     columns = pd.MultiIndex.from_tuples(
-        networks_dict.keys(), names=["cluster", "ll", "opt", "planning_horizon"]
+        networks_dict.keys(), names=["cluster", "offgrid", "ll", "opt", "planning_horizon"]
     )
 
     df = {}
@@ -686,11 +686,12 @@ if __name__ == "__main__":
     logging.basicConfig(level=snakemake.config["logging"]["level"])
 
     networks_dict = {
-        (cluster, ll, opt + sector_opt, planning_horizon): "results/"
+        (cluster, offgrid, ll, opt + sector_opt, planning_horizon): "results/"
         + snakemake.params.RDIR
-        + f"/postnetworks/elec_s{simpl}_{cluster}_l{ll}_{opt}_{sector_opt}_{planning_horizon}.nc"
+        + f"/postnetworks/elec_s{simpl}_{cluster}_off-{offgrid}_l{ll}_{opt}_{sector_opt}_{planning_horizon}.nc"
         for simpl in snakemake.config["scenario"]["simpl"]
         for cluster in snakemake.config["scenario"]["clusters"]
+        for offgrid in snakemake.config["scenario"]["offgrid"]
         for opt in snakemake.config["scenario"]["opts"]
         for sector_opt in snakemake.config["scenario"]["sector_opts"]
         for ll in snakemake.config["scenario"]["ll"]
