@@ -50,7 +50,7 @@ def center_of_mass(df, groupby=None, weight=None):
 
 def get_region_intersections(regions):
     intesections = dict()
-    regions = regions.to_crs(3035).buffer(100)
+    regions = regions.to_crs(3035).buffer(5000)
     for idx, region in regions.iteritems():
         intesections.update({idx: regions[regions.intersects(region)].index.tolist()})
     return intesections
@@ -403,7 +403,8 @@ if __name__ == "__main__":
                 offshore_regions,
                 w,
                 n_clusters=n_clusters,
-                attrs_name=["cf"],
+                attrs_name=["yield"],
+                gamma=0,
             )
             model.solve()
             offshore_regions["hub"] = np.array(model.labels_)
