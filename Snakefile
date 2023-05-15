@@ -41,7 +41,7 @@ localrules:
 wildcard_constraints:
     simpl="[a-zA-Z0-9]*",
     clusters="[0-9]+m?|all",
-    offgrid="\d+-[ch]|\d+-p-h|all|",
+    offgrid="\d+|all|",
     ll="(v|c)([0-9\.]+|opt|all)|all",
     opts="[-+a-zA-Z0-9\.]*",
     sector_opts="[-+a-zA-Z0-9\.\s]*",

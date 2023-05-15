@@ -35,28 +35,39 @@ def consense(x):
 
 
 def center_of_mass(df, groupby=None, weight=None):
+    df.geometry = df.to_crs(3035).centroid
     x = (
         df.groupby(groupby)
-        .apply(lambda x: (x["x"] * x[weight]).sum() / x[weight].sum())
+        .apply(lambda x: (x.geometry.x * x[weight]).sum() / x[weight].sum())
         .rename("x")
     )
     y = (
         df.groupby(groupby)
-        .apply(lambda x: (x["y"] * x[weight]).sum() / x[weight].sum())
+        .apply(lambda x: (x.geometry.y * x[weight]).sum() / x[weight].sum())
         .rename("y")
     )
-    return pd.concat([x, y], axis=1)
+    centers=gpd.GeoSeries(gpd.points_from_xy(x, y,crs=3035)).to_crs(4326)
+    return pd.concat([centers.x, centers.y], axis=1, keys=["x", "y"])
 
 
 def get_region_intersections(regions):
     intesections = dict()
     regions = regions.to_crs(3035).buffer(5000)
-    for idx, region in regions.iteritems():
+    for idx, region in regions.items():
         intesections.update({idx: regions[regions.intersects(region)].index.tolist()})
     return intesections
 
 
-def move_generators(offshore_regions, cluster_map=None):
+def move_generators(offshore_regions):
+    '''
+    This method attached the previously to onshore buses offshore generators to their offshore bus.
+
+    Parameters
+    ----------
+    offshore_regions : GeoDataFrame
+        GeoDataFrame containing all offshore regions.
+    '''
+    # Gets all offshore generators of the of the bus to which the offshore region is connected. Therefore, generators for which no offshore bus exists are included
     move_generators = (
         n.generators[n.generators.bus.isin(offshore_regions.bus.unique())]
         .filter(like="offwind", axis=0)
@@ -64,24 +75,15 @@ def move_generators(offshore_regions, cluster_map=None):
         .str.replace(" offwind-\w+", "", regex=True)
     )
 
-    # remove some buses from the move series as they could be attached to the same onshore bus, but are not within the sea region
-    if cluster_map is not None:
-        move_generators = move_generators.map(cluster_map)
-        prefix = "off_"
-        move_generators = prefix + move_generators
-    elif "hub" in offshore_regions.columns:
-        move_generators = move_generators.map(
-            offshore_regions.hub.astype("str")
-        ).dropna()
-        prefix = "hub_"
-        move_generators = prefix + move_generators
-    else:
-        prefix = "off_"
-        move_generators = prefix + move_generators
+    # Add prefix to generator to know it is attached to an offshore bus
+    prefix = "off_"
+    move_generators = prefix + move_generators
 
+    # Now only filter the offshore generators for which an offshore bus exists and move generators
     move_generators = move_generators[move_generators.isin(n.buses.index)]
     n.generators.loc[move_generators.index, "bus"] = move_generators
-    # only consider turbine cost and substation cost for offshore generators connected to offshore grid
+
+    # Only consider turbine cost and substation cost for offshore generators connected to offshore grid
     n.generators.loc[move_generators.index, "capital_cost"] = n.generators.loc[
         move_generators.index
     ].eval("turbine_cost + substation_cost")
@@ -99,6 +101,7 @@ def add_links(df):
         lambda x: x
         * line_length_factor
         * costs.at["HVDC submarine", "capital_cost"]
+        + costs.at["HVDC inverter pair", "capital_cost"]
     )
     n.madd(
         "Link",
@@ -135,115 +138,91 @@ def add_offshore_bus_connections():
     onshore_coords = n.buses.loc[offshore_regions.bus.unique(), ["x", "y"]]
     offshore_buses_coord = n.buses.loc[n.buses.index.str.contains("off"), ["x", "y"]]
     offshore_hub_coord = n.buses.loc[n.buses.index.str.contains("hub"), ["x", "y"]]
-
-    if offshore_hub_coord.empty:
-        tree = BallTree(
-            np.radians(offshore_buses_coord), leaf_size=40, metric="haversine"
-        )
-        offshore_coords = offshore_buses_coord
-    else:
-        tree = BallTree(
-            np.radians(offshore_hub_coord), leaf_size=40, metric="haversine"
-        )
-        offshore_coords = offshore_hub_coord
-
-    coords = pd.concat([onshore_coords, offshore_coords])
+    coords = pd.concat([onshore_coords, offshore_buses_coord, offshore_hub_coord])
     coords["xy"] = list(map(tuple, (coords[["x", "y"]]).values))
 
-    # works better than with closest neighbors. maybe only create graph like this for offshore buses:
-    cells, generators = libpysal.cg.voronoi_frames(
-        offshore_coords.values, clip="convex hull"
-    )
-    delaunay = libpysal.weights.Rook.from_dataframe(cells)
-    offshore_line_graph = delaunay.to_networkx()
-    offshore_line_graph = nx.relabel_nodes(
-        offshore_line_graph, dict(zip(offshore_line_graph, offshore_coords.index))
-    )
+    # If no offshore exists, the offshore buses are interconnected, otherwise the buses are connected to the hubs and the hubs have an interconnection between the hubs
+    if offshore_hub_coord.empty:
+        offshore_coords = offshore_buses_coord
+        onshore_connections = 1
+    else:
+        offshore_coords = offshore_hub_coord
+        onshore_connections = 2
+        hub_lines = pd.DataFrame({
+            "bus0": "hub_"+ offshore_regions.hub.astype("str"),
+            "bus1": "off_"+offshore_regions.index.to_series()
+            }).reset_index(drop=True)
+        hub_lines.loc[:, "length"] = hub_lines.apply(
+            lambda x: haversine(coords.loc[x.bus0, "xy"], coords.loc[x.bus1, "xy"]).item(),
+            axis=1,)
+        hub_lines.index = "off_hub_" + hub_lines.index.astype("str")
+        add_links(hub_lines)
 
-    offshore_lines = nx.to_pandas_edgelist(offshore_line_graph)
+    # Method to create evenly distributed connections between offshore busses or hub
+    offshore_lines = create_meshed_grid(offshore_coords)
 
-    # remove lines which intersect with onshore shapes
-    lines_filter = offshore_lines.apply(
-        lambda x: LineString(
-            [
-                n.buses.loc[x.source, ["x", "y"]].astype("float"),
-                n.buses.loc[x.target, ["x", "y"]].astype("float"),
-            ]
-        ),
-        axis=1,
-    )
-    onshore_shape = onshore_regions.unary_union
-    lines_filter = lines_filter.apply(lambda x: x.intersects(onshore_shape))
-    offshore_lines.drop(offshore_lines[lines_filter].index, inplace=True)
-
-    _, ind = tree.query(np.radians(onshore_coords), k=1)
-    # Build line graph to connect all offshore nodes and
-
-    on_line_graph = nx.Graph()
-    for i, bus in enumerate(onshore_coords.index):
-        for j in range(ind.shape[1]):
-            bus1 = offshore_coords.index[ind[i, j]]
-            on_line_graph.add_edge(bus, bus1)
-
-    onshore_lines = nx.to_pandas_edgelist(on_line_graph)
+    # Connect every offshore bus / hub to at least #onshore_connections onshore bus
+    onshore_lines = create_lines_kNN(offshore_coords, onshore_coords, k=onshore_connections)
 
     lines_df = pd.concat([offshore_lines, onshore_lines], axis=0, ignore_index=True)
-
     lines_df = lines_df.rename(
         columns={"source": "bus0", "target": "bus1", "weight": "length"}
     ).astype({"bus0": "string", "bus1": "string", "length": "float"})
-
     lines_df.loc[:, "length"] = lines_df.apply(
         lambda x: haversine(coords.loc[x.bus0, "xy"], coords.loc[x.bus1, "xy"]).item(),
         axis=1,
     )
     lines_df.drop(lines_df.query("length==0").index, inplace=True)
     lines_df.index = "off_" + lines_df.index.astype("str")
-
     add_links(lines_df)
 
 
-def distribute_offshore_cluster(n_clusters, cluster_countries_weights, solver_name):
-    m = po.ConcreteModel()
-
-    m.x = po.Var(
-        list(cluster_countries_weights.index),
-        bounds=(1, n_clusters),
-        domain=po.Integers,
+def create_meshed_grid(buses):
+    cells, generators = libpysal.cg.voronoi_frames(
+        buses.values, clip="convex hull"
     )
-    m.tot = po.Constraint(expr=(po.summation(m.x) == n_clusters))
-    m.objective = po.Objective(
-        expr=sum(
-            (m.x[i] - cluster_countries_weights.loc[i] * n_clusters) ** 2
-            for i in cluster_countries_weights.index
-        ),
-        sense=po.minimize,
+    delaunay = libpysal.weights.Rook.from_dataframe(cells)
+    line_graph = delaunay.to_networkx()
+    line_graph = nx.relabel_nodes(
+        line_graph, dict(zip(line_graph, buses.index))
     )
-    opt = po.SolverFactory(solver_name)
-    if not opt.has_capability("quadratic_objective"):
-        logger.warning(
-            f"The configured solver `{solver_name}` does not support quadratic objectives. Falling back to `ipopt`."
-        )
-        opt = po.SolverFactory("ipopt")
-
-    results = opt.solve(m)
-    assert (
-        results["Solver"][0]["Status"] == "ok"
-    ), f"Solver returned non-optimally: {results}"
-
-    return (
-        pd.Series(m.x.get_values(), index=cluster_countries_weights.index)
-        .round()
-        .astype(int)
+    lines = nx.to_pandas_edgelist(line_graph)
+    # Remove lines of meshed grid which intersect with onshore shapes
+    lines_filter = lines.apply(
+    lambda x: LineString(
+        [
+            n.buses.loc[x.source, ["x", "y"]].astype("float"),
+            n.buses.loc[x.target, ["x", "y"]].astype("float"),
+        ]
+    ),
+    axis=1,
     )
+    onshore_shape = onshore_regions.unary_union
+    lines_filter = lines_filter.apply(lambda x: x.intersects(onshore_shape))
+    lines.drop(lines[lines_filter].index, inplace=True)
+    return lines
 
+def create_lines_kNN(buses1, buses2, k=1):
+    # Connect every buses1 to at least #onshore_connections onshore bus
+    tree = BallTree(
+        np.radians(buses1), leaf_size=40, metric="haversine"
+    )
+    _, ind = tree.query(np.radians(buses2), k=k)
+
+    line_graph = nx.DiGraph()
+    for i, bus in enumerate(buses2.index):
+        for j in range(ind.shape[1]):
+            bus1 = buses1.index[ind[i, j]]
+            line_graph.add_edge(bus, bus1)
+
+    return nx.to_pandas_edgelist(line_graph)
 
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(
-            "build_offshore_grid", simpl="", clusters="64", offgrid="all"
+            "build_offshore_grid", simpl="", clusters="64", offgrid="10"
         )
     configure_logging(snakemake)
     n = pypsa.Network(snakemake.input.clustered_network)
@@ -315,88 +294,21 @@ if __name__ == "__main__":
             offshore_regions.country.str.contains("|".join(countries))
         ]
 
+        # if a shape for the offshore grid is selected only consider regions within this shape
         if snakemake.config["offshore_grid"]["sea_region"]:
             sea_shape = gpd.read_file(snakemake.config["offshore_grid"]["sea_region"])
             offshore_regions = offshore_regions[
                 offshore_regions.intersects(sea_shape.geometry.unary_union)
             ]
 
-        # TODO: cluster for offshore hubs
-        # TODO: think about threshold criterion
+        # only consider offshore regions which are bigger than 1GW and have a higher distance than 50m
         offshore_regions = offshore_regions.query("distance>=50 & p_nom_max>1000")
 
         offshore_regions["yield"] = offshore_regions.eval("p_nom_max * cf")
 
         # cluster buses to simplify grid or to get hubs
-        if "c" in offgrid:
-            n_clusters = int(offgrid.split("-")[0])
-            # distribute clusters according to energy yield and load of the connected onshore buses
-            cluster_countries_weights = offshore_regions["yield"].groupby(
-                offshore_regions.country
-            ).sum().transform(lambda x: x / x.max()) + n.loads_t.p_set.sum()[
-                offshore_regions["bus"].unique()
-            ].groupby(
-                n.buses.country
-            ).sum().transform(
-                lambda x: x / x.max()
-            )
-            # dropna() needed, because it happened that in the load weight entries of other countries than the regarded occurred
-            cluster_countries_weights = cluster_countries_weights.transform(
-                lambda x: x / x.sum()
-            ).dropna()
-
-            n_clusters_country = distribute_offshore_cluster(
-                n_clusters, cluster_countries_weights, "gurobi"
-            )
-            for country, n_cluster in n_clusters_country.iteritems():
-                regions = offshore_regions.query("country==@country")
-                if n_clusters == 1:
-                    offshore_regions.loc[regions.index, "cluster"] = country + " 0"
-                    continue
-                intesections = get_region_intersections(regions)
-                w = libpysal.weights.W(intesections)
-                model = Spenc(regions, w, n_clusters=n_cluster, attrs_name=["cf"])
-                model.solve()
-                offshore_regions.loc[regions.index, "cluster"] = (
-                    country + " " + model.labels_.astype("str").astype("object")
-                )
-
-            cluster_centroids = center_of_mass(
-                offshore_regions, groupby="cluster", weight="yield"
-            )
-            cluster_map = offshore_regions.cluster
-        elif "p-h" in offgrid:
-            p_nom_max = int(offgrid.split("-")[0]) * 1e3
-            intesections = get_region_intersections(offshore_regions.reset_index())
-            w = libpysal.weights.W(intesections)
-
-            model = MaxPHeuristic(
-                offshore_regions.reset_index(),
-                w,
-                attrs_name=["cf"],
-                threshold_name="p_nom_max",
-                threshold=p_nom_max,
-            )
-            model.solve()
-            offshore_regions["hub"] = np.array(model.labels_)
-            hub_location = center_of_mass(
-                offshore_regions, groupby="hub", weight="yield"
-            )
-            # connect only regions to hub which are closer to the hub than to onshore node
-            coords = coords.loc[offshore_regions.index, :]
-            coords["hub"] = list(
-                map(tuple, (hub_location.loc[offshore_regions.hub].values))
-            )
-            offshore_regions["distance_hub"] = coords.apply(
-                lambda x: haversine(x.offshore, x.hub), axis=1
-            )
-            offshore_regions.loc[
-                offshore_regions["distance_hub"] > offshore_regions["distance"], "hub"
-            ] = None
-            # ax = offshore_regions.plot(column='cluster', categorical=True, edgecolor='w', legend=True, cmap="tab20c", figsize=(20,20))
-            # ax.scatter(hub_location["x"], hub_location["y"])
-        elif "h" in offgrid:
-            n_clusters = int(offgrid.split("-")[0])
+        if offgrid != "":
+            n_clusters = int(offgrid)
             intesections = get_region_intersections(offshore_regions.reset_index())
             w = libpysal.weights.W(intesections)
             model = Spenc(
@@ -411,7 +323,7 @@ if __name__ == "__main__":
             hub_location = center_of_mass(
                 offshore_regions, groupby="hub", weight="yield"
             )
-            # connect only regions to hub which are closer to the hub than to onshore node
+
             coords = coords.loc[offshore_regions.index, :]
             coords["hub"] = list(
                 map(tuple, (hub_location.loc[offshore_regions.hub].values))
@@ -419,22 +331,10 @@ if __name__ == "__main__":
             offshore_regions["distance_hub"] = coords.apply(
                 lambda x: haversine(x.offshore, x.hub), axis=1
             )
-            offshore_regions.loc[
-                offshore_regions["distance_hub"] > offshore_regions["distance"], "hub"
-            ] = None
+            
+            # if region closer to onshore, do not consider for offshore grid
+            offshore_regions = offshore_regions[~(offshore_regions["distance_hub"] > offshore_regions["distance"])]
 
-        # Add offshore buses for offshore regions
-        if "c" in offgrid:
-            n.madd(
-                "Bus",
-                names="off_" + cluster_centroids.index.values,
-                v_nom=220,
-                x=cluster_centroids["x"].values,
-                y=cluster_centroids["y"].values,
-                substation_off=True,
-                country=cluster_centroids.index.str[:2].values,
-            )
-        elif "h" in offgrid:
             n.madd(
                 "Bus",
                 names="hub_" + hub_location.index.astype("str").values,
@@ -443,9 +343,9 @@ if __name__ == "__main__":
                 y=hub_location["y"].values,
                 substation_off=True,
             )
-            cluster_map = None
-        elif offgrid == "all" or offgrid == "":
-            n.madd(
+        
+        # create busses for offshore regions
+        n.madd(
                 "Bus",
                 names="off_" + offshore_regions.index,
                 v_nom=220,
@@ -454,16 +354,12 @@ if __name__ == "__main__":
                 substation_off=True,
                 country=offshore_regions["country"].values,
             )
-            cluster_map = None
-
         # move offshore generators to offshore buses
-        move_generators(offshore_regions, cluster_map)
+        move_generators(offshore_regions)
 
-        if offgrid_config["p2p_connection"] and not offgrid:
+        if offgrid_config["p2p_connection"]:
             add_p2p_connections()
-        elif offgrid and offgrid_config["p2p_connection"]:
-            add_p2p_connections()
+        if offgrid != "":
             add_offshore_bus_connections()
-        elif offgrid and not offshore_generators["p2p_connection"]:
-            add_offshore_bus_connections()
+
         n.export_to_netcdf(snakemake.output[0])
