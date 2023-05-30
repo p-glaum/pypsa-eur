@@ -162,9 +162,9 @@ def _prepare_connection_costs_per_link(n, costs, config):
                 * config["lines"]["length_factor"]
                 * (
                     n.links.underwater_fraction
-                    * costs.at[tech + "-connection-submarine", "capital_cost"]
+                    * costs.at["offshore-branch", "capital_cost"]
                     + (1.0 - n.links.underwater_fraction)
-                    * costs.at[tech + "-connection-underground", "capital_cost"]
+                    * costs.at["HVDC overhead", "capital_cost"]
                 )
             )
 

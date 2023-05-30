@@ -109,7 +109,7 @@ electricity:
     H2: 168
 
   extendable_carriers:
-    Generator: [solar, onwind, offwind-ac, offwind-dc, offwind-float, OCGT]
+    Generator: [solar, onwind, offwind-near, offwind-far, offwind-float, OCGT]
     StorageUnit: [] # battery, H2
     Store: [battery, H2]
     Link: [] # H2 pipeline
@@ -120,7 +120,7 @@ electricity:
   custom_powerplants: false
 
   conventional_carriers: [nuclear, oil, OCGT, CCGT, coal, lignite, geothermal, biomass]
-  renewable_carriers: [solar, onwind, offwind-ac, offwind-dc, offwind-float, hydro]
+  renewable_carriers: [solar, onwind, offwind-near, offwind-far, offwind-float, hydro]
 
   estimate_renewable_capacities:
     enable: true
@@ -134,7 +134,7 @@ electricity:
     expansion_limit: false
     technology_mapping:
       # Wind is the Fueltype in powerplantmatching, onwind, offwind-{ac,dc} the carrier in PyPSA-Eur
-      Offshore: [offwind-ac, offwind-dc, offwind-float]
+      Offshore: [offwind-near, offwind-far, offwind-float]
       Onshore: [onwind]
       PV: [solar]
 
@@ -186,7 +186,7 @@ renewable:
     excluder_resolution: 100
     potential: simple # or conservative
     clip_p_max_pu: 1.e-2
-  offwind-ac:
+  offwind-near:
     cutout: europe-2013-era5
     resource:
       method: wind
@@ -206,7 +206,7 @@ renewable:
     potential: simple # or conservative
     clip_p_max_pu: 1.e-2
     calculate_topology_cost: true
-  offwind-dc:
+  offwind-far:
     cutout: europe-2013-era5
     resource:
       method: wind
@@ -317,8 +317,8 @@ pypsa_eur:
   - DC
   Generator:
   - onwind
-  - offwind-ac
-  - offwind-dc
+  - offwind-near
+  - offwind-far
   - offwind-float
   - solar
   - ror
@@ -738,8 +738,8 @@ plotting:
   energy_threshold: 50.
   vre_techs:
   - onwind
-  - offwind-ac
-  - offwind-dc
+  - offwind-near
+  - offwind-far
   - offwind-float
   - solar
   - ror
@@ -780,7 +780,7 @@ plotting:
   - solar thermal collector
   - central solar thermal collector
 
-  vre_techs: ["onwind", "offwind-ac", "offwind-dc", "solar", "ror"]
+  vre_techs: ["onwind", "offwind-near", "offwind-far", "solar", "ror"]
   conv_techs: ["OCGT", "CCGT", "Nuclear", "Coal"]
   storage_techs: ["hydro+PHS", "battery", "H2"]
   load_carriers: ["AC load"]
@@ -790,8 +790,8 @@ plotting:
   nice_names:
     OCGT: "Open-Cycle Gas"
     CCGT: "Combined-Cycle Gas"
-    offwind-ac: "Offshore Wind (AC)"
-    offwind-dc: "Offshore Wind (DC)"
+    offwind-near: "Offshore Wind (Near)"
+    offwind-far: "Offshore Wind (Far)"
     offwind-float: "Offshore Wind (Float)"
     onwind: "Onshore Wind"
     solar: "Solar"
@@ -808,15 +808,12 @@ plotting:
     onshore wind: "#235ebc"
     offwind: "#6895dd"
     offshore wind: "#6895dd"
-    offwind-ac: "#6895dd"
-    offshore wind (AC): "#6895dd"
-    offshore wind ac: "#6895dd"
-    offwind-dc: "#74c6f2"
-    offshore wind (DC): "#74c6f2"
-    offshore wind dc: "#74c6f2"
+    offwind-near: "#6895dd"
+    Offshore Wind (Near): "#6895dd"
+    offwind-far: "#74c6f2"
+    Offshore wind (Far): "#74c6f2"
     offwind-float: "#b5e2fa"
-    offshore wind (Float): "#b5e2fa"
-    offshore wind float: "#b5e2fa"
+    Offshore Wind (Float): "#b5e2fa"
     # water
     hydro: '#298c81'
     hydro reservoir: '#298c81'

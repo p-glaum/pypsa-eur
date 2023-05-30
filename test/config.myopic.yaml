@@ -31,7 +31,7 @@ snapshots:
   end: "2013-03-08"
 
 electricity:
-  renewable_carriers: [solar, onwind, offwind-ac, offwind-dc]
+  renewable_carriers: [solar, onwind, offwind-near, offwind-far]
 
 atlite:
   default_cutout: be-03-2013-era5
@@ -45,10 +45,10 @@ atlite:
 renewable:
   onwind:
     cutout: be-03-2013-era5
-  offwind-ac:
+  offwind-near:
     cutout: be-03-2013-era5
     max_depth: false
-  offwind-dc:
+  offwind-far:
     cutout: be-03-2013-era5
     max_depth: false
   solar:

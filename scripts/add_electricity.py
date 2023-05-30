@@ -350,7 +350,7 @@ def update_transmission_costs(n, costs, length_factor=1.0):
             (1.0 - n.links.loc[dc_b, "underwater_fraction"])
             * costs.at["HVDC overhead", "capital_cost"]
             + n.links.loc[dc_b, "underwater_fraction"]
-            * costs.at["HVDC submarine", "capital_cost"]
+            * costs.at["offshore-branch", "capital_cost"]
         )
         + costs.at["HVDC inverter pair", "capital_cost"]
     )
@@ -385,13 +385,13 @@ def attach_wind_and_solar(
                     * ds["average_distance"].to_pandas()
                     * (
                         underwater_fraction
-                        * costs.at[tech + "-connection-submarine", "capital_cost"]
+                        * costs.at["offshore-branch", "capital_cost"]
                         + (1.0 - underwater_fraction)
-                        * costs.at[tech + "-connection-underground", "capital_cost"]
+                        * costs.at["HVDC overhead", "capital_cost"]
                     )
                 )
                 grid_connection_cost = (
-                    costs.at[tech + "-station", "capital_cost"] + cable_cost
+                    costs.at["offshore-node", "capital_cost"] + cable_cost
                 )
                 calculate_topology_cost = config[tech].get(
                     "calculate_topology_cost", False
@@ -437,7 +437,7 @@ def attach_wind_and_solar(
                     weight=ds["weight"].to_pandas(),
                     marginal_cost=costs.at[suptech, "marginal_cost"],
                     capital_cost=capital_cost,
-                    substation_cost=costs.at[tech + "-station", "capital_cost"],
+                    substation_cost=costs.at["offshore-node", "capital_cost"],
                     cable_cost=cable_cost,
                     turbine_cost=turbine_cost,
                     distance=ds["average_distance"].to_pandas(),

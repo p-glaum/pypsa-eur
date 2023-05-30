@@ -146,11 +146,11 @@ This triggers a workflow of multiple preceding jobs that depend on each rule's i
         10[label = "retrieve_natura_raster", color = "0.62 0.6 0.85", style="rounded"];
         11[label = "build_bus_regions", color = "0.53 0.6 0.85", style="rounded"];
         12[label = "retrieve_cutout\ncutout: europe-2013-era5", color = "0.05 0.6 0.85", style="rounded,dashed"];
-        13[label = "build_renewable_profiles\ntechnology: offwind-ac", color = "0.57 0.6 0.85", style="rounded"];
+        13[label = "build_renewable_profiles\ntechnology: offwind-near", color = "0.57 0.6 0.85", style="rounded"];
         14[label = "build_ship_raster", color = "0.64 0.6 0.85", style="rounded"];
         15[label = "retrieve_ship_raster", color = "0.07 0.6 0.85", style="rounded,dashed"];
         16[label = "retrieve_cutout\ncutout: europe-2013-sarah", color = "0.05 0.6 0.85", style="rounded,dashed"];
-        17[label = "build_renewable_profiles\ntechnology: offwind-dc", color = "0.57 0.6 0.85", style="rounded"];
+        17[label = "build_renewable_profiles\ntechnology: offwind-far", color = "0.57 0.6 0.85", style="rounded"];
         18[label = "build_renewable_profiles\ntechnology: solar", color = "0.57 0.6 0.85", style="rounded"];
         19[label = "build_hydro_profile", color = "0.44 0.6 0.85", style="rounded"];
         20[label = "retrieve_cost_data", color = "0.30 0.6 0.85", style="rounded"];

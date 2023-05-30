@@ -690,8 +690,8 @@ rule prepare_sector_network:
         costs="data/costs_{}.csv".format(config["costs"]["year"])
         if config["foresight"] == "overnight"
         else "data/costs_{planning_horizons}.csv",
-        profile_offwind_ac=RESOURCES + "profile_offwind-ac.nc",
-        profile_offwind_dc=RESOURCES + "profile_offwind-dc.nc",
+        profile_offwind_near=RESOURCES + "profile_offwind-near.nc",
+        profile_offwind_far=RESOURCES + "profile_offwind-far.nc",
         profile_offwind_float=RESOURCES + "profile_offwind-float.nc",
         h2_cavern=RESOURCES + "salt_cavern_potentials_s{simpl}_{clusters}.csv",
         busmap_s=RESOURCES + "busmap_elec_s{simpl}.csv",

@@ -61,7 +61,7 @@ def add_existing_renewables(df_agg):
     Append existing renewables to the df_agg pd.DataFrame with the conventional
     power plants.
     """
-    carriers = {"solar": "solar", "onwind": "onwind", "offwind": "offwind-ac"}
+    carriers = {"solar": "solar", "onwind": "onwind", "offwind": "offwind-near"}
 
     for tech in ["solar", "onwind", "offwind"]:
         carrier = carriers[tech]

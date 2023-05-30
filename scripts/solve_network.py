@@ -55,7 +55,7 @@ def add_land_use_constraint(n, config):
 def _add_land_use_constraint(n, config):
     # warning: this will miss existing offwind which is not classed AC-DC and has carrier 'offwind'
 
-    for carrier in ["solar", "onwind", "offwind-ac", "offwind-dc"]:
+    for carrier in ["solar", "onwind", "offwind-near", "offwind-far"]:
         ext_i = (n.generators.carrier == carrier) & ~n.generators.p_nom_extendable
         existing = (
             n.generators.loc[ext_i, "p_nom"]
@@ -88,7 +88,7 @@ def _add_land_use_constraint_m(n, config):
     grouping_years = config["existing_capacities"]["grouping_years"]
     current_horizon = snakemake.wildcards.planning_horizons
 
-    for carrier in ["solar", "onwind", "offwind-ac", "offwind-dc"]:
+    for carrier in ["solar", "onwind", "offwind-near", "offwind-far"]:
         existing = n.generators.loc[n.generators.carrier == carrier, "p_nom"]
         ind = list(
             set(
@@ -333,8 +333,8 @@ def add_BAU_constraints(n, config):
             solar: 0
             onwind: 0
             OCGT: 100000
-            offwind-ac: 0
-            offwind-dc: 0
+            offwind-near: 0
+            offwind-far: 0
     Which sets minimum expansion across all nodes e.g. in Europe to 100GW.
     OCGT bus 1 + OCGT bus 2 + ... > 100000
     """
@@ -551,6 +551,33 @@ def add_pipe_retrofit_constraint(n):
 
     n.model.add_constraints(lhs == rhs, name="Link-pipe_retrofit")
 
+def add_transmission_limit(n):
+    factor = snakemake.wildcards.ll[1:]
+    
+    if factor != "opt":
+        links_dc_b = (n.links.carrier == "DC") & (n.links.underwater_fraction >= 0.1) if not n.links.empty else pd.Series()
+        links = n.links.loc[links_dc_b]
+        
+        _lines_s_nom = (
+            np.sqrt(3)
+            * n.lines.type.map(n.line_types.i_nom)
+            * n.lines.num_parallel
+            * n.lines.bus0.map(n.buses.v_nom)
+        )
+        lines_s_nom = n.lines.s_nom.where(n.lines.type == "", _lines_s_nom)
+
+        ref = (
+            lines_s_nom @ n.lines["length"]
+            + n.links.loc[links_dc_b, "p_nom"] @ n.links.loc[links_dc_b, "length"]
+        )
+        rhs = ref * float(factor)
+
+
+        s_nom = n.model["Line-s_nom"]
+        p_nom = n.model["Link-p_nom"]
+        lhs = (n.lines["length"].values * s_nom).sum() + (links[ "length"].values * p_nom.loc[links.index]).sum()
+        
+        n.model.add_constraints(lhs <= rhs, name="Transmission limit")
 
 def extra_functionality(n, snapshots):
     """
@@ -577,6 +604,7 @@ def extra_functionality(n, snapshots):
             add_EQ_constraints(n, o)
     add_battery_constraints(n)
     add_pipe_retrofit_constraint(n)
+    add_transmission_limit(n)
 
 
 def solve_network(n, config, opts="", **kwargs):
@@ -633,13 +661,13 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "solve_sector_network",
-            configfiles="test/config.overnight.yaml",
             simpl="",
             opts="",
-            clusters="5",
+            clusters="37",
+            offgrid = "all",
             ll="v1.5",
-            sector_opts="CO2L0-24H-T-H-B-I-A-solar+p3-dist1",
-            planning_horizons="2030",
+            sector_opts="Co2L0-25H-T-H-B-I-A-onwind+p0.25-solar+p3-linemaxext20",
+            planning_horizons="2050",
         )
     configure_logging(snakemake)
     if "sector_opts" in snakemake.wildcards.keys():

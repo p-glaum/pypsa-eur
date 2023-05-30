@@ -163,38 +163,38 @@ Define and specify the ``atlite.Cutout`` used for calculating renewable potentia
 .. literalinclude:: ../config.default.yaml
    :language: yaml
    :start-at: renewable:
-   :end-before:   offwind-ac:
+   :end-before:   offwind-near:
 
 .. csv-table::
    :header-rows: 1
    :widths: 25,7,22,30
    :file: configtables/onwind.csv
 
-``offwind-ac``
+``offwind-near``
 --------------
 
 .. literalinclude:: ../config.default.yaml
    :language: yaml
-   :start-at:   offwind-ac:
-   :end-before:   offwind-dc:
+   :start-at:   offwind-near:
+   :end-before:   offwind-far:
 
 .. csv-table::
    :header-rows: 1
    :widths: 25,7,22,30
-   :file: configtables/offwind-ac.csv
+   :file: configtables/offwind-near.csv
 
-``offwind-dc``
+``offwind-far``
 ---------------
 
 .. literalinclude:: ../config.default.yaml
    :language: yaml
-   :start-at:   offwind-dc:
+   :start-at:   offwind-far:
    :end-before:   solar:
 
 .. csv-table::
    :header-rows: 1
    :widths: 25,7,22,30
-   :file: configtables/offwind-dc.csv
+   :file: configtables/offwind-far.csv
 
 ``solar``
 ---------------
