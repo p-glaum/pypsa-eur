@@ -551,20 +551,19 @@ def add_pipe_retrofit_constraint(n):
 
     n.model.add_constraints(lhs == rhs, name="Link-pipe_retrofit")
 
+
 def add_transmission_limit(n):
     factor = snakemake.wildcards.ll[1:]
-    
-    if factor != "opt":
-        links_dc_b = (n.links.carrier == "DC") & (n.links.underwater_fraction >= 0.1) if not n.links.empty else pd.Series()
-        links = n.links.loc[links_dc_b]
-        
-        _lines_s_nom = (
-            np.sqrt(3)
-            * n.lines.type.map(n.line_types.i_nom)
-            * n.lines.num_parallel
-            * n.lines.bus0.map(n.buses.v_nom)
+
+    if factor != "opt" and factor != "1.0":
+        links_dc_b = (
+            (n.links.carrier == "DC") & (n.links.underwater_fraction >= 0.1)
+            if not n.links.empty
+            else pd.Series()
         )
-        lines_s_nom = n.lines.s_nom.where(n.lines.type == "", _lines_s_nom)
+        links = n.links.loc[links_dc_b]
+
+        lines_s_nom = n.lines.s_nom
 
         ref = (
             lines_s_nom @ n.lines["length"]
@@ -572,12 +571,14 @@ def add_transmission_limit(n):
         )
         rhs = ref * float(factor)
 
-
         s_nom = n.model["Line-s_nom"]
         p_nom = n.model["Link-p_nom"]
-        lhs = (n.lines["length"].values * s_nom).sum() + (links[ "length"].values * p_nom.loc[links.index]).sum()
-        
+        lhs = (n.lines["length"].values * s_nom).sum() + (
+            links["length"].values * p_nom.loc[links.index]
+        ).sum()
+
         n.model.add_constraints(lhs <= rhs, name="Transmission limit")
+
 
 def extra_functionality(n, snapshots):
     """
@@ -663,9 +664,9 @@ if __name__ == "__main__":
             "solve_sector_network",
             simpl="",
             opts="",
-            clusters="37",
-            offgrid = "all",
-            ll="v1.5",
+            clusters="64",
+            offgrid="all",
+            ll="v1.0",
             sector_opts="Co2L0-25H-T-H-B-I-A-onwind+p0.25-solar+p3-linemaxext20",
             planning_horizons="2050",
         )

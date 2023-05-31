@@ -114,7 +114,6 @@ def set_line_s_max_pu(n, s_max_pu=0.7):
 
 def set_transmission_limit(n, ll_type, factor, costs, Nyears=1):
     links_dc_b = n.links.carrier == "DC" if not n.links.empty else pd.Series()
-
     _lines_s_nom = (
         np.sqrt(3)
         * n.lines.type.map(n.line_types.i_nom)
@@ -123,37 +122,19 @@ def set_transmission_limit(n, ll_type, factor, costs, Nyears=1):
     )
     lines_s_nom = n.lines.s_nom.where(n.lines.type == "", _lines_s_nom)
 
-    col = "capital_cost" if ll_type == "c" else "length"
-    ref = (
-        lines_s_nom @ n.lines[col]
-        + n.links.loc[links_dc_b, "p_nom"] @ n.links.loc[links_dc_b, col]
-    )
-
-    update_transmission_costs(n, costs)
-
     if factor == "opt" or float(factor) > 1.0:
         n.lines["s_nom_min"] = lines_s_nom
         n.lines["s_nom_extendable"] = True
 
         n.links.loc[links_dc_b, "p_nom_min"] = n.links.loc[links_dc_b, "p_nom"]
         n.links.loc[links_dc_b, "p_nom_extendable"] = True
+    elif float(factor) == 1.0:
+        n.lines["s_nom_extendable"] = False
+        n.links.loc[links_dc_b, "p_nom_extendable"] = False
 
     # do not consider offshore links which are under water (0.1 because through clustering the fraction decreases)
-    off_link_filter = (n.links.underwater_fraction >= 0.1)
+    off_link_filter = n.links.underwater_fraction >= 0.1
     n.links.loc[off_link_filter, "p_nom_extendable"] = True
-
-    # if factor != "opt":
-    #     con_type = "expansion_cost" if ll_type == "c" else "volume_expansion"
-    #     rhs = float(factor) * ref
-    #     n.add(
-    #         "GlobalConstraint",
-    #         f"l{ll_type}_limit",
-    #         type=f"transmission_{con_type}_limit",
-    #         sense="<=",
-    #         constant=rhs,
-    #         carrier_attribute="AC, DC",
-    #     )
-
     return n
 
 
@@ -251,7 +232,7 @@ if __name__ == "__main__":
             simpl="",
             clusters="37",
             offgrid="all",
-            ll="v1.5",
+            ll="v1.0",
             opts="",
         )
     configure_logging(snakemake)
