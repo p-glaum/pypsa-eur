@@ -35,7 +35,7 @@ def rename_techs_tyndp(tech):
         return "power-to-heat"
     elif tech in ["H2 Electrolysis", "methanation", "helmeth", "H2 liquefaction"]:
         return "power-to-gas"
-    elif tech == "H2":
+    elif tech in ["H2", "H2 Store"]:
         return "H2 storage"
     elif tech in ["NH3", "Haber-Bosch", "ammonia cracker", "ammonia store"]:
         return "ammonia"
@@ -925,10 +925,11 @@ if __name__ == "__main__":
             "plot_network",
             simpl="",
             opts="",
-            clusters="5",
-            ll="v1.5",
-            sector_opts="CO2L0-1H-T-H-B-I-A-solar+p3-dist1",
-            planning_horizons="2030",
+            clusters="64",
+            offgrid="10",
+            ll="v1.0",
+            sector_opts="Co2L0-25H-T-H-B-I-A-onwind+p0.25-solar+p3-linemaxext20",
+            planning_horizons="2050",
         )
 
     logging.basicConfig(level=snakemake.config["logging"]["level"])
