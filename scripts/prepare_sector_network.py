@@ -2,7 +2,6 @@
 # SPDX-FileCopyrightText: : 2020-2023 The PyPSA-Eur Authors
 #
 # SPDX-License-Identifier: MIT
-
 """
 Adds all sector-coupling components to the network, including demand and supply
 technologies for the buildings, transport and industry sectors.
@@ -23,14 +22,13 @@ from _helpers import (
     override_component_attrs,
     update_config_with_sector_opts,
 )
-from add_electricity import calculate_offwind_cost
+from add_electricity import calculate_annuity, calculate_offwind_cost
 from build_energy_totals import build_co2_totals, build_eea_co2, build_eurostat_co2
 from networkx.algorithms import complement
 from networkx.algorithms.connectivity.edge_augmentation import k_edge_augmentation
 from pypsa.geo import haversine_pts
 from pypsa.io import import_components_from_dataframe
 from scipy.stats import beta
-from vresutils.costdata import annuity
 
 logger = logging.getLogger(__name__)
 
@@ -333,7 +331,9 @@ def create_network_topology(
 
     # whether want to consider offshore H2 grid
     if not options.get("H2_network_offshore", False):
-        candidates.drop(candidates.filter(like="off", axis=0).index, axis=0, inplace=True)
+        candidates.drop(
+            candidates.filter(like="off", axis=0).index, axis=0, inplace=True
+        )
 
     # base network topology purely on location not carrier
     candidates["bus0"] = candidates.bus0.map(n.buses.location)
@@ -391,67 +391,103 @@ def update_wind_solar_costs(n, costs):
     clustermaps = busmap_s.map(busmap)
 
     line_length_factor = snakemake.config["lines"]["length_factor"]
-    #code adapted from pypsa-eur/scripts/add_electricity.py
-    for connection in ['near', 'far', 'float']:
+    # code adapted from pypsa-eur/scripts/add_electricity.py
+    for connection in ["near", "far", "float"]:
         tech = "offwind-" + connection
-        profile = snakemake.input['profile_offwind_' + connection]
+        profile = snakemake.input["profile_offwind_" + connection]
         with xr.open_dataset(profile) as ds:
-            index_mapper=ds.bus.to_pandas().str.split("_").str[0]
-            underwater_fraction = ds['underwater_fraction'].to_pandas()
+            index_mapper = ds.bus.to_pandas().str.split("_").str[0]
+            underwater_fraction = ds["underwater_fraction"].to_pandas()
 
             cable_cost = (
-                    line_length_factor
-                    * ds["average_distance"].to_pandas()
-                    * (
-                        underwater_fraction
-                        * costs.at["offshore-branch", "fixed"]
-                        + (1.0 - underwater_fraction)
-                        * costs.at["HVDC overhead", "fixed"]
-                    )
+                line_length_factor
+                * ds["average_distance"].to_pandas()
+                * (
+                    underwater_fraction * costs.at["offshore-branch", "fixed"]
+                    + (1.0 - underwater_fraction) * costs.at["HVDC overhead", "fixed"]
                 )
+            )
 
             # do not consider connection cost if generator is connected to offshore bus
-            cable_cost.loc[("off_" +cable_cost.index).isin(n.buses.index)] = 0
-            
-            #convert to aggregated clusters with weighting
-            weight = ds['weight'].to_pandas()
+            cable_cost.loc[("off_" + cable_cost.index).isin(n.buses.index)] = 0
 
-            #e.g. clusters == 37m means that VRE generators are left
-            #at clustering of simplified network, but that they are
-            #connected to 37-node network
-            if len(n.generators.loc[n.generators.carrier==tech])==len(ds.bus):
-                genmap=ds.bus.to_pandas()
+            # convert to aggregated clusters with weighting
+            weight = ds["weight"].to_pandas()
+
+            # e.g. clusters == 37m means that VRE generators are left
+            # at clustering of simplified network, but that they are
+            # connected to 37-node network
+            if len(n.generators.loc[n.generators.carrier == tech]) == len(ds.bus):
+                genmap = ds.bus.to_pandas()
             elif snakemake.wildcards.clusters[-1:] == "m":
                 genmap = index_mapper.map(busmap_s)
             else:
                 genmap = index_mapper.map(clustermaps)
 
-            cable_cost = (cable_cost*weight).groupby(genmap).sum()/weight.groupby(genmap).sum()
-            grid_connection_cost = cable_cost + costs.at['offshore-node', 'fixed']
+            cable_cost = (cable_cost * weight).groupby(genmap).sum() / weight.groupby(
+                genmap
+            ).sum()
+            grid_connection_cost = cable_cost + costs.at["offshore-node", "fixed"]
 
-            off_wind=snakemake.config["renewable"]
-            calculate_topology_cost=off_wind[tech].get("calculate_topology_cost", False)
+            off_wind = snakemake.config["renewable"]
+            calculate_topology_cost = off_wind[tech].get(
+                "calculate_topology_cost", False
+            )
             if calculate_topology_cost and tech != "offwind-float":
                 import atlite
+
                 turbine_type = off_wind[tech]["resource"]["turbine"]
                 turbine_config = atlite.resource.get_windturbineconfig(turbine_type)
-                kwargs={"WD":ds["water_depth"].to_pandas(), "MW":turbine_config["P"], "HH":turbine_config["hub_height"]}
-                turbine_cost = calculate_offwind_cost(**kwargs) * (annuity(costs.at[tech, 'lifetime'], costs.at[tech, "discount rate"]) + costs.at[tech, "FOM"] / 100.) * nyears
-                turbine_cost = (turbine_cost*weight).groupby(genmap).sum()/weight.groupby(genmap).sum()
+                kwargs = {
+                    "WD": ds["water_depth"].to_pandas(),
+                    "MW": turbine_config["P"],
+                    "HH": turbine_config["hub_height"],
+                }
+                turbine_cost = (
+                    calculate_offwind_cost(**kwargs)
+                    * (
+                        calculate_annuity(
+                            costs.at[tech, "lifetime"], costs.at[tech, "discount rate"]
+                        )
+                        + costs.at[tech, "FOM"] / 100.0
+                    )
+                    * nyears
+                )
+                turbine_cost = (turbine_cost * weight).groupby(
+                    genmap
+                ).sum() / weight.groupby(genmap).sum()
             else:
-                turbine_cost=costs.at[tech, 'fixed']
-            
-            capital_cost = (turbine_cost + grid_connection_cost)
+                turbine_cost = costs.at[tech, "fixed"]
 
-            logger.info("Added connection cost of {:0.0f}-{:0.0f} Eur/MW/a to {}"
-                        .format(grid_connection_cost[0].min(), grid_connection_cost[0].max(), tech))
+            capital_cost = turbine_cost + grid_connection_cost
 
-            idx = n.generators.loc[n.generators.carrier==tech, 'capital_cost'].index
-            idx = dict(zip(capital_cost.index,capital_cost.index.map(lambda x: idx[idx.str.contains(x)][0])))
-            n.generators.loc[n.generators.carrier==tech, 'capital_cost'] = capital_cost.rename(index=idx)
-            n.generators.loc[n.generators.carrier==tech, 'cable_cost'] = cable_cost.rename(index=idx)
-            n.generators.loc[n.generators.carrier==tech, 'substation_cost'] = costs.at["offshore-node", 'fixed']
-            n.generators.loc[n.generators.carrier==tech, 'turbine_cost'] = turbine_cost if isinstance(turbine_cost, float) else turbine_cost.rename(index=idx)
+            logger.info(
+                "Added connection cost of {:0.0f}-{:0.0f} Eur/MW/a to {}".format(
+                    grid_connection_cost[0].min(), grid_connection_cost[0].max(), tech
+                )
+            )
+
+            idx = n.generators.loc[n.generators.carrier == tech, "capital_cost"].index
+            idx = dict(
+                zip(
+                    capital_cost.index,
+                    capital_cost.index.map(lambda x: idx[idx.str.contains(x)][0]),
+                )
+            )
+            n.generators.loc[
+                n.generators.carrier == tech, "capital_cost"
+            ] = capital_cost.rename(index=idx)
+            n.generators.loc[
+                n.generators.carrier == tech, "cable_cost"
+            ] = cable_cost.rename(index=idx)
+            n.generators.loc[
+                n.generators.carrier == tech, "substation_cost"
+            ] = costs.at["offshore-node", "fixed"]
+            n.generators.loc[n.generators.carrier == tech, "turbine_cost"] = (
+                turbine_cost
+                if isinstance(turbine_cost, float)
+                else turbine_cost.rename(index=idx)
+            )
 
 
 def add_carrier_buses(n, carrier, nodes=None):
@@ -763,7 +799,7 @@ def prepare_costs(cost_file, config, nyears):
     costs = costs.fillna(config["fill_values"])
 
     def annuity_factor(v):
-        return annuity(v["lifetime"], v["discount rate"]) + v["FOM"] / 100
+        return calculate_annuity(v["lifetime"], v["discount rate"]) + v["FOM"] / 100
 
     costs["fixed"] = [
         annuity_factor(v) * v["investment"] * nyears for i, v in costs.iterrows()
@@ -872,7 +908,7 @@ def add_wave(n, wave_cost_factor):
     capacity = pd.Series({"Attenuator": 750, "F2HB": 1000, "MultiPA": 600})
 
     # in EUR/MW
-    annuity_factor = annuity(25, 0.07) + 0.03
+    annuity_factor = calculate_annuity(25, 0.07) + 0.03
     costs = (
         1e6
         * wave_cost_factor
@@ -1088,23 +1124,49 @@ def add_storage_and_grids(n, costs):
         lifetime=costs.at["electrolysis", "lifetime"],
     )
 
-    n.madd(
-        "Link",
-        nodes + " H2 Fuel Cell",
-        bus0=nodes + " H2",
-        bus1=nodes,
-        p_nom_extendable=True,
-        carrier="H2 Fuel Cell",
-        efficiency=costs.at["fuel cell", "efficiency"],
-        capital_cost=costs.at["fuel cell", "fixed"]
-        * costs.at["fuel cell", "efficiency"],  # NB: fixed cost is per MWel
-        lifetime=costs.at["fuel cell", "lifetime"],
-    )
+    if options["hydrogen_fuel_cell"]:
+        logger.info("Adding hydrogen fuel cell for re-electrification.")
+
+        n.madd(
+            "Link",
+            nodes + " H2 Fuel Cell",
+            bus0=nodes + " H2",
+            bus1=nodes,
+            p_nom_extendable=True,
+            carrier="H2 Fuel Cell",
+            efficiency=costs.at["fuel cell", "efficiency"],
+            capital_cost=costs.at["fuel cell", "fixed"]
+            * costs.at["fuel cell", "efficiency"],  # NB: fixed cost is per MWel
+            lifetime=costs.at["fuel cell", "lifetime"],
+        )
+
+    if options["hydrogen_turbine"]:
+        logger.info(
+            "Adding hydrogen turbine for re-electrification. Assuming OCGT technology costs."
+        )
+        # TODO: perhaps replace with hydrogen-specific technology assumptions.
+
+        n.madd(
+            "Link",
+            nodes + " H2 turbine",
+            bus0=nodes + " H2",
+            bus1=nodes,
+            p_nom_extendable=True,
+            carrier="H2 turbine",
+            efficiency=costs.at["OCGT", "efficiency"],
+            capital_cost=costs.at["OCGT", "fixed"]
+            * costs.at["OCGT", "efficiency"],  # NB: fixed cost is per MWel
+            lifetime=costs.at["OCGT", "lifetime"],
+        )
 
     cavern_types = snakemake.config["sector"]["hydrogen_underground_storage_locations"]
     h2_caverns = pd.read_csv(snakemake.input.h2_cavern, index_col=0)
 
-    if not h2_caverns.empty and options["hydrogen_underground_storage"]:
+    if (
+        not h2_caverns.empty
+        and options["hydrogen_underground_storage"]
+        and set(cavern_types).intersection(h2_caverns.columns)
+    ):
         h2_caverns = h2_caverns[cavern_types].sum(axis=1)
 
         # only use sites with at least 2 TWh potential
@@ -3256,12 +3318,12 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "prepare_sector_network",
-            simpl='',
+            simpl="",
             opts="",
             clusters="37",
             offgrid="all",
             ll="v1.5",
-            sector_opts='Co2L0-25H-T-H-B-I-A-onwind+p0.25-solar+p3-linemaxext20',
+            sector_opts="Co2L0-25H-T-H-B-I-A-onwind+p0.25-solar+p3-linemaxext20",
             planning_horizons="2050",
         )
 

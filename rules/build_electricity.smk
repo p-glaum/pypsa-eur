@@ -18,19 +18,19 @@ if config["enable"].get("prepare_links_p_nom", False):
             "../scripts/prepare_links_p_nom.py"
 
 
-rule build_load_data:
+rule build_electricity_demand:
     input:
         ancient("data/load_raw.csv"),
     output:
         RESOURCES + "load.csv",
     log:
-        LOGS + "build_load_data.log",
+        LOGS + "build_electricity_demand.log",
     resources:
         mem_mb=5000,
     conda:
         "../envs/environment.yaml"
     script:
-        "../scripts/build_load_data.py"
+        "../scripts/build_electricity_demand.py"
 
 
 rule build_powerplants:
@@ -172,7 +172,7 @@ rule build_ship_raster:
             ],
         ),
     output:
-        RESOURCES + "shipdensity_raster.nc",
+        RESOURCES + "shipdensity_raster.tif",
     log:
         LOGS + "build_ship_raster.log",
     resources:
@@ -202,7 +202,7 @@ rule build_renewable_profiles:
             )
         ),
         ship_density=lambda w: (
-            RESOURCES + "shipdensity_raster.nc"
+            RESOURCES + "shipdensity_raster.tif"
             if "ship_threshold" in config["renewable"][w.technology].keys()
             else []
         ),
@@ -341,14 +341,15 @@ rule cluster_network:
     script:
         "../scripts/cluster_network.py"
 
+
 rule build_offshore_grid:
     input:
         country_shapes=RESOURCES + "country_shapes.geojson",
         onshore_regions=RESOURCES + "regions_onshore.geojson",
         offshore_regions=RESOURCES + "regions_offshore.geojson",
-        offshore_shapes=RESOURCES  + "offshore_shapes.geojson",
-        busmap_cluster=RESOURCES  + "busmap_elec_s{simpl}_{clusters}.csv",
-        busmap_simpl=RESOURCES  + "busmap_elec_s.csv",
+        offshore_shapes=RESOURCES + "offshore_shapes.geojson",
+        busmap_cluster=RESOURCES + "busmap_elec_s{simpl}_{clusters}.csv",
+        busmap_simpl=RESOURCES + "busmap_elec_s.csv",
         clustered_network=RESOURCES + "networks/elec_s{simpl}_{clusters}.nc",
         tech_costs=COSTS,
     output:
@@ -388,9 +389,13 @@ rule prepare_network:
     output:
         RESOURCES + "networks/elec_s{simpl}_{clusters}_off-{offgrid}_ec_l{ll}_{opts}.nc",
     log:
-        LOGS + "prepare_network/elec_s{simpl}_{clusters}_off-{offgrid}_ec_l{ll}_{opts}.log",
+        LOGS
+        + "prepare_network/elec_s{simpl}_{clusters}_off-{offgrid}_ec_l{ll}_{opts}.log",
     benchmark:
-        (BENCHMARKS + "prepare_network/elec_s{simpl}_{clusters}_off-{offgrid}_ec_l{ll}_{opts}")
+        (
+            BENCHMARKS
+            + "prepare_network/elec_s{simpl}_{clusters}_off-{offgrid}_ec_l{ll}_{opts}"
+        )
     threads: 1
     resources:
         mem_mb=4000,

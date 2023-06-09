@@ -2,7 +2,6 @@
 # SPDX-FileCopyrightText: : 2017-2023 The PyPSA-Eur Authors
 #
 # SPDX-License-Identifier: MIT
-
 """
 Solves optimal operation and capacity for a network with the option to
 iteratively optimize while updating line reactances.
@@ -39,10 +38,10 @@ from _helpers import (
     override_component_attrs,
     update_config_with_sector_opts,
 )
-from vresutils.benchmark import memory_logger
 
 logger = logging.getLogger(__name__)
 pypsa.pf.logger.setLevel(logging.WARNING)
+from pypsa.descriptors import get_switchable_as_dense as get_as_dense
 
 
 def add_land_use_constraint(n, config):
@@ -151,7 +150,8 @@ def prepare_network(n, solve_opts=None, config=None):
         ):
             df.where(df > solve_opts["clip_p_max_pu"], other=0.0, inplace=True)
 
-    if solve_opts.get("load_shedding"):
+    load_shedding = solve_opts.get("load_shedding")
+    if load_shedding:
         # intersect between macroeconomic and surveybased willingness to pay
         # http://journal.frontiersin.org/article/10.3389/fenrg.2015.00055/full
         # TODO: retrieve color and nice name from config
@@ -165,7 +165,7 @@ def prepare_network(n, solve_opts=None, config=None):
             "Generator",
             buses_i,
             " load",
-            bus=n.buses.index,
+            bus=buses_i,
             carrier="load",
             sign=1e-3,  # Adjust sign to measure p and p_nom in kW instead of MW
             marginal_cost=load_shedding,  # Eur/kWh
@@ -414,7 +414,7 @@ def add_operational_reserve_margin(n, sns, config):
         0, np.inf, coords=[sns, n.generators.index], name="Generator-r"
     )
     reserve = n.model["Generator-r"]
-    lhs = reserve.sum("Generator")
+    summed_reserve = reserve.sum("Generator")
 
     # Share of extendable renewable capacities
     ext_i = n.generators.query("p_nom_extendable").index
@@ -426,10 +426,12 @@ def add_operational_reserve_margin(n, sns, config):
             .loc[vres_i.intersection(ext_i)]
             .rename({"Generator-ext": "Generator"})
         )
-        lhs = lhs + (p_nom_vres * (-EPSILON_VRES * capacity_factor)).sum()
+        lhs = summed_reserve + (p_nom_vres * (-EPSILON_VRES * capacity_factor)).sum(
+            "Generator"
+        )
 
     # Total demand per t
-    demand = n.loads_t.p_set.sum(axis=1)
+    demand = get_as_dense(n, "Load", "p_set").sum(axis=1)
 
     # VRES potential of non extendable generators
     capacity_factor = n.generators_t.p_max_pu[vres_i.difference(ext_i)]
@@ -441,17 +443,26 @@ def add_operational_reserve_margin(n, sns, config):
 
     n.model.add_constraints(lhs >= rhs, name="reserve_margin")
 
+    # additional constraint that capacity is not exceeded
+    gen_i = n.generators.index
+    ext_i = n.generators.query("p_nom_extendable").index
+    fix_i = n.generators.query("not p_nom_extendable").index
+
+    dispatch = n.model["Generator-p"]
     reserve = n.model["Generator-r"]
 
-    lhs = n.model.constraints["Generator-fix-p-upper"].lhs
-    lhs = lhs + reserve.loc[:, lhs.coords["Generator-fix"]].drop("Generator")
-    rhs = n.model.constraints["Generator-fix-p-upper"].rhs
-    n.model.add_constraints(lhs <= rhs, name="Generator-fix-p-upper-reserve")
+    capacity_variable = n.model["Generator-p_nom"].rename(
+        {"Generator-ext": "Generator"}
+    )
+    capacity_fixed = n.generators.p_nom[fix_i]
 
-    lhs = n.model.constraints["Generator-ext-p-upper"].lhs
-    lhs = lhs + reserve.loc[:, lhs.coords["Generator-ext"]].drop("Generator")
-    rhs = n.model.constraints["Generator-ext-p-upper"].rhs
-    n.model.add_constraints(lhs >= rhs, name="Generator-ext-p-upper-reserve")
+    p_max_pu = get_as_dense(n, "Generator", "p_max_pu")
+
+    lhs = dispatch + reserve - capacity_variable * p_max_pu[ext_i]
+
+    rhs = (p_max_pu[fix_i] * capacity_fixed).reindex(columns=gen_i, fill_value=0)
+
+    n.model.add_constraints(lhs <= rhs, name="Generator-p-reserve-upper")
 
 
 def add_battery_constraints(n):
@@ -618,6 +629,7 @@ def solve_network(n, config, opts="", **kwargs):
     track_iterations = cf_solving.get("track_iterations", False)
     min_iterations = cf_solving.get("min_iterations", 4)
     max_iterations = cf_solving.get("max_iterations", 6)
+    transmission_losses = cf_solving.get("transmission_losses", 0)
 
     # add to network for extra_functionality
     n.config = config
@@ -631,6 +643,7 @@ def solve_network(n, config, opts="", **kwargs):
     if skip_iterations:
         status, condition = n.optimize(
             solver_name=solver_name,
+            transmission_losses=transmission_losses,
             extra_functionality=extra_functionality,
             **solver_options,
             **kwargs,
@@ -641,6 +654,7 @@ def solve_network(n, config, opts="", **kwargs):
             track_iterations=track_iterations,
             min_iterations=min_iterations,
             max_iterations=max_iterations,
+            transmission_losses=transmission_losses,
             extra_functionality=extra_functionality,
             **solver_options,
             **kwargs,
@@ -684,23 +698,17 @@ if __name__ == "__main__":
 
     np.random.seed(solve_opts.get("seed", 123))
 
-    fn = getattr(snakemake.log, "memory", None)
-    with memory_logger(filename=fn, interval=30.0) as mem:
-        if "overrides" in snakemake.input.keys():
-            overrides = override_component_attrs(snakemake.input.overrides)
-            n = pypsa.Network(
-                snakemake.input.network, override_component_attrs=overrides
-            )
-        else:
-            n = pypsa.Network(snakemake.input.network)
+    if "overrides" in snakemake.input.keys():
+        overrides = override_component_attrs(snakemake.input.overrides)
+        n = pypsa.Network(snakemake.input.network, override_component_attrs=overrides)
+    else:
+        n = pypsa.Network(snakemake.input.network)
 
-        n = prepare_network(n, solve_opts, config=snakemake.config)
+    n = prepare_network(n, solve_opts, config=snakemake.config)
 
-        n = solve_network(
-            n, config=snakemake.config, opts=opts, log_fn=snakemake.log.solver
-        )
+    n = solve_network(
+        n, config=snakemake.config, opts=opts, log_fn=snakemake.log.solver
+    )
 
-        n.meta = dict(snakemake.config, **dict(wildcards=dict(snakemake.wildcards)))
-        n.export_to_netcdf(snakemake.output[0])
-
-    logger.info("Maximum memory usage: {}".format(mem.mem_usage))
+    n.meta = dict(snakemake.config, **dict(wildcards=dict(snakemake.wildcards)))
+    n.export_to_netcdf(snakemake.output[0])

@@ -38,7 +38,7 @@ Relevant Settings
         type:
 
 .. seealso::
-    Documentation of the configuration file ``config.yaml`` at
+    Documentation of the configuration file ``config/config.yaml`` at
     :ref:`snapshots_cf`, :ref:`toplevel_cf`, :ref:`electricity_cf`, :ref:`load_cf`,
     :ref:`lines_cf`, :ref:`links_cf`, :ref:`transformers_cf`
 
@@ -73,12 +73,12 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import pypsa
-from pypsa.geo import haversine
 import shapely
 import shapely.prepared
 import shapely.wkt
 import yaml
 from _helpers import configure_logging
+from pypsa.geo import haversine
 from scipy import spatial
 from scipy.sparse import csgraph
 from shapely.geometry import LineString, Point
@@ -288,8 +288,13 @@ def _add_links_from_tyndp(buses, links, links_tyndp, europe_shape):
     links_tyndp = links_tyndp[["bus0", "bus1"]].assign(
         carrier="DC",
         p_nom=links_tyndp["Power (MW)"],
-        #get calculated distance to make it comparable with other built links
-        length=links_tyndp.apply(lambda x: haversine(buses.loc[x.bus0,["x","y"]], buses.loc[x.bus1,["x","y"]]).item(), axis=1),
+        # get calculated distance to make it comparable with other built links
+        length=links_tyndp.apply(
+            lambda x: haversine(
+                buses.loc[x.bus0, ["x", "y"]], buses.loc[x.bus1, ["x", "y"]]
+            ).item(),
+            axis=1,
+        ),
         under_construction=True,
         underground=False,
         geometry=(

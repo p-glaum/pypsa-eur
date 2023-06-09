@@ -21,7 +21,7 @@ Relevant Settings
       custom_powerplants:
 
 .. seealso::
-    Documentation of the configuration file ``config.yaml`` at
+    Documentation of the configuration file ``config/config.yaml`` at
     :ref:`electricity`
 
 Inputs
@@ -84,6 +84,7 @@ from _helpers import configure_logging
 from powerplantmatching.export import map_country_bus
 
 logger = logging.getLogger(__name__)
+
 
 def add_custom_powerplants(ppl, custom_powerplants, custom_ppl_query=False):
     if not custom_ppl_query:

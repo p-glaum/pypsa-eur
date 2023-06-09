@@ -191,7 +191,7 @@ renewable:
     resource:
       method: wind
       turbine: NREL_ReferenceTurbine_2020ATB_12MW_offshore
-    capacity_per_sqkm: 2.5
+    capacity_per_sqkm: 5 # from DEA with 8RD layout
     correction_factor: 0.8855
     # proxy for wake losses
     # from 10.1016/j.energy.2018.08.153
@@ -211,7 +211,7 @@ renewable:
     resource:
       method: wind
       turbine: NREL_ReferenceTurbine_2020ATB_12MW_offshore
-    capacity_per_sqkm: 3.5 # from DEA
+    capacity_per_sqkm: 6 # from DEA with 8RD layout
     correction_factor: 0.8855
     # proxy for wake losses
     # from 10.1016/j.energy.2018.08.153
@@ -229,9 +229,7 @@ renewable:
     resource:
       method: wind
       turbine: NREL_ReferenceTurbine_5MW_offshore
-    capacity_per_sqkm: 2 # ScholzPhd Tab 4.3.1: 10MW/km^2 and assuming 20% fraction of the already restricted
-    # area is available for installation of wind generators due to competing land use and likely public
-    # acceptance issues.
+    capacity_per_sqkm: 6 # from DEA with 8RD layout
     correction_factor: 0.8855
     # proxy for wake losses
     # from 10.1016/j.energy.2018.08.153
@@ -486,11 +484,13 @@ sector:
   solar_cf_correction: 0.788457  # =  >>> 1/1.2683
   marginal_cost_storage: 0. #1e-4
   methanation: true
-  helmeth: true
+  helmeth: false
   coal_cc: false
   dac: true
   co2_vent: false
   allam_cycle: false
+  hydrogen_fuel_cell: true
+  hydrogen_turbine: false
   SMR: true
   regional_co2_sequestration_potential:
     enable: false  # enable regionally resolved geological co2 storage potential
@@ -519,6 +519,7 @@ sector:
   electricity_distribution_grid_cost_factor: 1.0  #multiplies cost in data/costs.csv
   electricity_grid_connection: true  # only applies to onshore wind and utility PV
   H2_network: true
+  H2_network_offshore: false
   gas_network: false
   H2_retrofit: false  # if set to True existing gas pipes can be retrofitted to H2 pipes
   # according to hydrogen backbone strategy (April, 2020) p.15
@@ -571,8 +572,8 @@ industry:
   NH3_process_emissions: 24.5 # in MtCO2/a from SMR for H2 production for NH3 from UNFCCC for 2015 for EU28
   petrochemical_process_emissions: 25.5 # in MtCO2/a for petrochemical and other from UNFCCC for 2015 for EU28
   HVC_primary_fraction: 1. # fraction of today's HVC produced via primary route
-  HVC_mechanical_recycling_fraction: 0. # fraction of today's HVC produced via mechanical recycling
-  HVC_chemical_recycling_fraction: 0. # fraction of today's HVC produced via chemical recycling
+  HVC_mechanical_recycling_fraction: 0.3 # fraction of today's HVC produced via mechanical recycling
+  HVC_chemical_recycling_fraction: 0.15 # fraction of today's HVC produced via chemical recycling
   HVC_production_today: 52. # MtHVC/a from DECHEMA (2017), Figure 16, page 107; includes ethylene, propylene and BTX
   MWh_elec_per_tHVC_mechanical_recycling: 0.547 # from SI of https://doi.org/10.1016/j.resconrec.2020.105010, Table S5, for HDPE, PP, PS, PET. LDPE would be 0.756.
   MWh_elec_per_tHVC_chemical_recycling: 6.9 # Material Economics (2019), page 125; based on pyrolysis and electric steam cracking
@@ -607,7 +608,8 @@ costs:
   marginal_cost:
     solar: 0.01
     onwind: 0.015
-    offwind: 0.015
+    offwind-near: 0.015
+    offwind-far: 0.015
     offwind-float: 0.015
     hydro: 0.
     H2: 0.
@@ -621,21 +623,21 @@ costs:
 offshore_grid:
   split_offshore_regions: true #splits big offshore regions into smaller regions
   p2p_connection: true
-  countries: ["GB", "NO", "DE", "NL", "DK"]
-  sea_region: none
+  countries: [] #countries for which to build offshore grid
+  sea_region: "" #path to shape file for which to build offshore regions
 
 clustering:
   simplify_network:
     to_substations: false # network is simplified to nodes with positive or negative power injection (i.e. substations or offwind connections)
     algorithm: kmeans # choose from: [hac, kmeans]
     feature: solar+onwind-time # only for hac. choose from: [solar+onwind-time, solar+onwind-cap, solar-time, solar-cap, solar+offwind-cap] etc.
-    exclude_carriers: []
+    exclude_carriers: ["offwind-near", "offwind-far", "offwind-float"]
     remove_stubs: true
     remove_stubs_across_borders: true
   cluster_network:
     algorithm: kmeans
     feature: solar+onwind-time
-    exclude_carriers: []
+    exclude_carriers: ["offwind-near", "offwind-far", "offwind-float"]
   aggregation_strategies:
     generators:
       p_nom_max: sum # use "min" for more conservative assumptions
@@ -650,9 +652,9 @@ clustering:
 solving:
   #tmpdir: "path/to/tmp"
   options:
-    formulation: kirchhoff
     clip_p_max_pu: 1.e-2
     load_shedding: false
+    transmission_losses: 0
     noisy_costs: true
     skip_iterations: true
     track_iterations: false
@@ -681,7 +683,7 @@ solving:
       threads: 4
       method: 2 # barrier
       crossover: 0
-      BarConvTol: 1.e-6
+      BarConvTol: 1.e-5
       Seed: 123
       AggFill: 0
       PreDual: 0
@@ -934,6 +936,7 @@ plotting:
     H2 pipeline: '#f081dc'
     H2 pipeline retrofitted: '#ba99b5'
     H2 Fuel Cell: '#c251ae'
+    H2 turbine: '#991f83'
     H2 Electrolysis: '#ff29d9'
     # ammonia
     NH3: '#46caf0'

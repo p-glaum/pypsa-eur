@@ -2,7 +2,6 @@
 # SPDX-FileCopyrightText: : 2017-2023 The PyPSA-Eur Authors
 #
 # SPDX-License-Identifier: MIT
-
 """
 Creates Voronoi shapes for each bus representing both onshore and offshore
 regions.
@@ -15,7 +14,7 @@ Relevant Settings
     countries:
 
 .. seealso::
-    Documentation of the configuration file ``config.yaml`` at
+    Documentation of the configuration file ``config/config.yaml`` at
     :ref:`toplevel_cf`
 
 Inputs
@@ -53,8 +52,8 @@ from pyproj import Geod
 from scipy.spatial import Voronoi
 from shapely import affinity
 from shapely.geometry import Point, Polygon
-from sklearn.cluster import KMeans
 from shapely.validation import make_valid
+from sklearn.cluster import KMeans
 
 logger = logging.getLogger(__name__)
 
@@ -71,10 +70,12 @@ def transform_points(points, source="4326", target="6933"):
     points = np.asarray([points.x, points.y]).T
     return points
 
+
 def check_validity(row):
     if not row.geometry.is_valid:
-        row.geometry=make_valid(row.geometry)
+        row.geometry = make_valid(row.geometry)
     return row
+
 
 def cluster_points(n_clusters, point_list):
     """
@@ -92,7 +93,9 @@ def cluster_points(n_clusters, point_list):
         Returns list of cluster centers.
     """
     point_list = transform_points(np.array(point_list), source="4326", target="6933")
-    kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init="auto").fit(point_list)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init="auto").fit(
+        point_list
+    )
     cluster_centers = transform_points(
         np.array(kmeans.cluster_centers_), source="6933", target="4326"
     )
@@ -173,9 +176,10 @@ def save_to_geojson(s, fn):
 
 def voronoi_partition_pts(points, outline):
     """
-    Compute the polygons of a voronoi partition of `points` within the
-    polygon `outline`. Taken from
-    https://github.com/FRESNA/vresutils/blob/master/vresutils/graph.py
+    Compute the polygons of a voronoi partition of `points` within the polygon
+    `outline`. Taken from
+    https://github.com/FRESNA/vresutils/blob/master/vresutils/graph.py.
+
     Attributes
     ----------
     points : Nx2 - ndarray[dtype=float]
@@ -301,7 +305,10 @@ if __name__ == "__main__":
                 lambda x: calculate_area(x) / threshold_area
             )
             length_filter = (
-                offshore_regions_c[region_oversize < 1].convex_hull.to_crs("6933").length / 1000
+                offshore_regions_c[region_oversize < 1]
+                .convex_hull.to_crs("6933")
+                .length
+                / 1000
                 > threshold_length
             )
             region_oversize.loc[length_filter[length_filter].index] = 2
@@ -339,6 +346,8 @@ if __name__ == "__main__":
         centroid = offshore_regions.to_crs(6933).centroid.to_crs(4326)
         offshore_regions["x_region"] = centroid.x
         offshore_regions["y_region"] = centroid.y
-        offshore_regions.apply(check_validity, axis=1).to_file(snakemake.output.regions_offshore)
+        offshore_regions.apply(check_validity, axis=1).to_file(
+            snakemake.output.regions_offshore
+        )
     else:
         offshore_shapes.to_frame().to_file(snakemake.output.regions_offshore)
