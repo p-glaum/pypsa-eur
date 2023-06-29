@@ -621,10 +621,12 @@ costs:
     co2: 0.
 
 offshore_grid:
-  split_offshore_regions: true #splits big offshore regions into smaller regions
+  split_offshore_regions: false #splits big offshore regions into smaller regions. If you only want to split regions for a given sea region, provide argument for sea_region
+  mesh_offshore_regions: true #instead of splitting offshore regions one can only decide to mesh them for the given sea_region
+  threshold_area: 10e3   # area in km2 threshold at which regions are split or how they are meshed
   p2p_connection: true
   countries: [] #countries for which to build offshore grid
-  sea_region: "" #path to shape file for which to build offshore regions
+  sea_region: "" #path to shape file for which to split regions and build offshore grid
 
 clustering:
   simplify_network:
