@@ -28,7 +28,15 @@ snapshots:
   end: "2013-03-08"
 
 electricity:
-  renewable_carriers: [solar, onwind, offwind-near, offwind-far]
+  co2limit: 100.e+6
+
+  extendable_carriers:
+    Generator: [OCGT]
+    StorageUnit: [battery]
+    Store: [H2]
+    Link: [H2 pipeline]
+
+  renewable_carriers: [solar, onwind, offwind-ac, offwind-dc]
 
 atlite:
   default_cutout: be-03-2013-era5
