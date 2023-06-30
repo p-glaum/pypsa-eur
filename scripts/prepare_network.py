@@ -138,17 +138,18 @@ def set_transmission_limit(n, ll_type, factor, costs, Nyears=1):
         n.links.loc[links_dc_b, "p_nom_min"] = n.links.loc[links_dc_b, "p_nom"]
         n.links.loc[links_dc_b, "p_nom_extendable"] = True
 
-    if factor != "opt":
-        con_type = "expansion_cost" if ll_type == "c" else "volume_expansion"
-        rhs = float(factor) * ref
-        n.add(
-            "GlobalConstraint",
-            f"l{ll_type}_limit",
-            type=f"transmission_{con_type}_limit",
-            sense="<=",
-            constant=rhs,
-            carrier_attribute="AC, DC",
-        )
+    # transmission limit is set later in solve_network, but need to set s_nom_extendable and p_nom_extendable to true first.
+    # if factor != "opt":
+    #     con_type = "expansion_cost" if ll_type == "c" else "volume_expansion"
+    #     rhs = float(factor) * ref
+    #     n.add(
+    #         "GlobalConstraint",
+    #         f"l{ll_type}_limit",
+    #         type=f"transmission_{con_type}_limit",
+    #         sense="<=",
+    #         constant=rhs,
+    #         carrier_attribute="AC, DC",
+    #     )
 
     return n
 
@@ -331,7 +332,7 @@ if __name__ == "__main__":
             break
 
     ll_type, factor = snakemake.wildcards.ll[0], snakemake.wildcards.ll[1:]
-    # ignore, because constraint is defined later in solve_networks set_transmission_limit(n, ll_type, factor, costs, Nyears)
+    set_transmission_limit(n, ll_type, factor, costs, Nyears)
 
     set_line_nom_max(
         n,
