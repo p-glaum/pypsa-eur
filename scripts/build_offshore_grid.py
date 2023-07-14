@@ -131,6 +131,7 @@ def add_links(df):
         length=df["length"].values,
         capital_cost=df["cost"].values,
         underwater_fraction=1,
+        p_nom_extendable=True,
     )
 
 
