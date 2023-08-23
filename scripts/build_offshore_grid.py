@@ -101,7 +101,7 @@ def move_generators(offshore_regions):
         n.generators[n.generators.bus.isin(offshore_regions.bus.unique())]
         .filter(like="offwind", axis=0)
         .index.to_series()
-        .str.replace(" offwind-\w+", "", regex=True)
+        .str.replace(" offwind-\w+\s?\w+", "", regex=True)
     )
 
     # Add prefix to generator to know it is attached to an offshore bus
@@ -113,9 +113,10 @@ def move_generators(offshore_regions):
     n.generators.loc[move_generators.index, "bus"] = move_generators
 
     # Only consider turbine cost and substation cost for offshore generators connected to offshore grid
-    n.generators.loc[move_generators.index, "capital_cost"] = n.generators.loc[
-        move_generators.index
-    ].eval("turbine_cost + substation_cost")
+    n.generators.loc[move_generators.index, "capital_cost"] = (
+        n.generators.loc[move_generators.index, "turbine_cost"]
+        + n.generators.loc[move_generators.index, "substation_cost"]
+    )
     rename_index = dict(zip(move_generators.index, prefix + move_generators.index))
     n.generators.rename(index=rename_index, inplace=True)
     n.generators_t.p_max_pu.rename(columns=rename_index, inplace=True)
@@ -255,6 +256,92 @@ def create_lines_kNN(buses1, buses2, k=1):
     return nx.to_pandas_edgelist(line_graph)
 
 
+def add_wake_generators():
+    mapping = (
+        n.generators[n.generators.bus.isin(offshore_regions.bus.unique())]
+        .filter(like="offwind", axis=0)
+        .index.to_series()
+        .str.replace(" offwind-\w+", "", regex=True)
+    )
+    wake_generators = n.generators.loc[
+        mapping.index, :
+    ]  # only consider offshore generators
+    wake_generators = wake_generators[
+        wake_generators.p_nom_max > 2e3
+    ]  # only apply wake effect for generators greater than 2GW
+    split_generators = split_generators = {
+        2: wake_generators[wake_generators.p_nom_max <= 12e3],
+        3: wake_generators[wake_generators.p_nom_max > 12e3],
+    }
+    factor_wake_losses = {
+        1: 0,
+        2: 0.1279732,
+        3: 0.13902848,
+    }  # factor for wake losses for each split generator
+    max_capacity = {
+        1: 2e3,
+        2: 10e3,
+        3: np.inf,
+    }  # maximum capacity for each split generator
+
+    generators_to_add = list()
+    generators_t_to_add = list()
+    generators_to_add_labels = list()
+    generators_to_drop = list()
+
+    # split generators into multiple generators with different time series
+    for num, df in split_generators.items():
+        for generator_i in df.index:
+            generators_to_drop.append(generator_i)
+            used_capacity = 0
+            p_nom = 0
+            for i in range(1, num + 1):
+                generator = df.loc[generator_i].copy()
+                generator_t = n.generators_t.p_max_pu.loc[:, generator_i].copy()
+                if used_capacity + max_capacity[i] <= generator.p_nom_max:
+                    generator["p_nom_max"] = max_capacity[i]
+                    used_capacity += max_capacity[i]
+                else:
+                    generator.p_nom_max = generator.p_nom_max - used_capacity
+                    used_capacity = generator.p_nom_max
+                # adjust p_nom of the generators that the sum of the split generators is equal to the original p_nom
+                if p_nom != generator.p_nom:
+                    if max_capacity[i] < generator.p_nom - p_nom:
+                        generator["p_nom"] = max_capacity[i]
+                        generator["p_nom_min"] = max_capacity[i]
+                    else:
+                        generator["p_nom"] = generator["p_nom"] - p_nom
+                        generator["p_nom_min"] = generator["p_nom_min"] - p_nom
+                elif p_nom == generator["p_nom"]:
+                    generator["p_nom"] = 0
+                    generator["p_nom_min"] = 0
+                p_nom += generator["p_nom"]
+                generators_to_add_labels.append(generator_i + " w" + str(i))
+                generators_to_add.append(generator)
+                generators_t_to_add.append(generator_t * (1 - factor_wake_losses[i]))
+    n.consistency_check()
+    # delete original generators and add split generators
+    n.generators.drop(index=generators_to_drop, inplace=True)
+    n.generators_t.p_max_pu.drop(columns=generators_to_drop, inplace=True)
+    n.generators = pd.concat(
+        [
+            n.generators,
+            pd.concat(
+                generators_to_add, axis=1, keys=generators_to_add_labels
+            ).T.infer_objects(),
+        ],
+        axis=0,
+    )
+    n.generators_t.p_max_pu = pd.concat(
+        [
+            n.generators_t.p_max_pu,
+            pd.concat(generators_t_to_add, axis=1, keys=generators_to_add_labels),
+        ],
+        axis=1,
+    )
+    n.generators_t.p_max_pu.columns.names = ["Generator"]
+
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from _helpers import mock_snakemake
@@ -269,7 +356,11 @@ if __name__ == "__main__":
 
     params = snakemake.params
     offgrid_config = params["offgrid"]
-    if not offgrid and not offgrid_config["p2p_connection"]:
+    if (
+        not offgrid
+        and not offgrid_config["p2p_connection"]
+        and not offgrid_config["wake_effect"]
+    ):
         n.export_to_netcdf(snakemake.output[0])
     else:
         country_shapes = gpd.read_file(snakemake.input.country_shapes).set_index(
@@ -340,6 +431,10 @@ if __name__ == "__main__":
             offshore_regions = offshore_regions[
                 offshore_regions.intersects(sea_shape.geometry.unary_union)
             ]
+
+        # model wake effect for offshore generators in relevant offshore region
+        if offgrid_config["wake_effect"]:
+            add_wake_generators()
 
         # only consider offshore regions which are bigger than 1GW and have a higher distance than 50m
         offshore_regions = offshore_regions.query("distance>=50 & p_nom_max>1000")

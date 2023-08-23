@@ -228,7 +228,7 @@ renewable:
     cutout: europe-2013-era5
     resource:
       method: wind
-      turbine: NREL_ReferenceTurbine_5MW_offshore
+      turbine: NREL_ReferenceTurbine_2020ATB_12MW_offshore
     capacity_per_sqkm: 6 # from DEA with 8RD layout
     correction_factor: 0.8855
     # proxy for wake losses
@@ -627,6 +627,7 @@ offshore_grid:
   p2p_connection: true
   countries: [] #countries for which to build offshore grid
   sea_region: "" #path to shape file for which to split regions and build offshore grid
+  wake_effect: true #whether to consider wake effect for offshore generators
 
 clustering:
   simplify_network:
