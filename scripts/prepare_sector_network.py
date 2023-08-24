@@ -17,12 +17,8 @@ import numpy as np
 import pandas as pd
 import pypsa
 import xarray as xr
-from _helpers import (
-    generate_periodic_profiles,
-    override_component_attrs,
-    update_config_with_sector_opts,
-)
-from add_electricity import calculate_annuity, calculate_offwind_cost
+from _helpers import generate_periodic_profiles, update_config_with_sector_opts
+from add_electricity import calculate_annuity, calculate_offwind_cost, sanitize_carriers
 from build_energy_totals import build_co2_totals, build_eea_co2, build_eurostat_co2
 from networkx.algorithms import complement
 from networkx.algorithms.connectivity.edge_augmentation import k_edge_augmentation
@@ -195,17 +191,15 @@ def get(item, investment_year=None):
 
 
 def co2_emissions_year(
-    countries, input_eurostat, opts, emissions_scope, report_year, year
+    countries, input_eurostat, opts, emissions_scope, report_year, input_co2, year
 ):
     """
     Calculate CO2 emissions in one specific year (e.g. 1990 or 2018).
     """
-    emissions_scope = snakemake.params.energy["emissions"]
-    eea_co2 = build_eea_co2(snakemake.input.co2, year, emissions_scope)
+    eea_co2 = build_eea_co2(input_co2, year, emissions_scope)
 
     # TODO: read Eurostat data from year > 2014
     # this only affects the estimation of CO2 emissions for BA, RS, AL, ME, MK
-    report_year = snakemake.params.energy["eurostat_report_year"]
     if year > 2014:
         eurostat_co2 = build_eurostat_co2(
             input_eurostat, countries, report_year, year=2014
@@ -226,7 +220,7 @@ def co2_emissions_year(
 
 
 # TODO: move to own rule with sector-opts wildcard?
-def build_carbon_budget(o, input_eurostat, fn, emissions_scope, report_year):
+def build_carbon_budget(o, input_eurostat, fn, emissions_scope, report_year, input_co2):
     """
     Distribute carbon budget following beta or exponential transition path.
     """
@@ -244,12 +238,24 @@ def build_carbon_budget(o, input_eurostat, fn, emissions_scope, report_year):
     countries = snakemake.params.countries
 
     e_1990 = co2_emissions_year(
-        countries, input_eurostat, opts, emissions_scope, report_year, year=1990
+        countries,
+        input_eurostat,
+        opts,
+        emissions_scope,
+        report_year,
+        input_co2,
+        year=1990,
     )
 
     # emissions at the beginning of the path (last year available 2018)
     e_0 = co2_emissions_year(
-        countries, input_eurostat, opts, emissions_scope, report_year, year=2018
+        countries,
+        input_eurostat,
+        opts,
+        emissions_scope,
+        report_year,
+        input_co2,
+        year=2018,
     )
 
     planning_horizons = snakemake.params.planning_horizons
@@ -563,7 +569,8 @@ def remove_non_electric_buses(n):
 def patch_electricity_network(n):
     remove_elec_base_techs(n)
     remove_non_electric_buses(n)
-    update_wind_solar_costs(n, costs)
+    # not needed for the offshore analysis and to avoid error currently disabled
+    # update_wind_solar_costs(n, costs)
     n.loads["carrier"] = "electricity"
     n.buses["location"] = n.buses.index
     n.buses["unit"] = "MWh_el"
@@ -2215,12 +2222,11 @@ def add_biomass(n, costs):
     )
 
     if options["biomass_transport"]:
-        transport_costs = pd.read_csv(
-            snakemake.input.biomass_transport_costs,
-            index_col=0,
-        ).squeeze()
-
         # add biomass transport
+        transport_costs = pd.read_csv(
+            snakemake.input.biomass_transport_costs, index_col=0
+        )
+        transport_costs = transport_costs.squeeze()
         biomass_transport = create_network_topology(
             n, "biomass transport ", bidirectional=False
         )
@@ -2242,6 +2248,27 @@ def add_biomass(n, costs):
             length=biomass_transport.length.values,
             marginal_cost=biomass_transport.costs * biomass_transport.length.values,
             carrier="solid biomass transport",
+        )
+
+    elif options["biomass_spatial"]:
+        # add artificial biomass generators at nodes which include transport costs
+        transport_costs = pd.read_csv(
+            snakemake.input.biomass_transport_costs, index_col=0
+        )
+        transport_costs = transport_costs.squeeze()
+        bus_transport_costs = spatial.biomass.nodes.to_series().apply(
+            lambda x: transport_costs[x[:2]]
+        )
+        average_distance = 200  # km #TODO: validate this assumption
+
+        n.madd(
+            "Generator",
+            spatial.biomass.nodes,
+            bus=spatial.biomass.nodes,
+            carrier="solid biomass",
+            p_nom=10000,
+            marginal_cost=costs.at["solid biomass", "fuel"]
+            + bus_transport_costs * average_distance,
         )
 
     # AC buses with district heating
@@ -3111,7 +3138,6 @@ def maybe_adjust_costs_and_potentials(n, opts):
             logger.info(f"changing {attr} for {carrier} by factor {factor}")
 
 
-# TODO this should rather be a config no wildcard
 def limit_individual_line_extension(n, maxext):
     logger.info(f"Limiting new HVAC and HVDC extensions to {maxext} MW")
     n.lines["s_nom_max"] = n.lines["s_nom"] + maxext
@@ -3337,8 +3363,7 @@ if __name__ == "__main__":
 
     investment_year = int(snakemake.wildcards.planning_horizons[-4:])
 
-    overrides = override_component_attrs(snakemake.input.overrides)
-    n = pypsa.Network(snakemake.input.network, override_component_attrs=overrides)
+    n = pypsa.Network(snakemake.input.network)
 
     pop_layout = pd.read_csv(snakemake.input.clustered_pop_layout, index_col=0)
     nhours = n.snapshot_weightings.generators.sum()
@@ -3435,12 +3460,18 @@ if __name__ == "__main__":
         if "cb" not in o:
             continue
         limit_type = "carbon budget"
-        fn = "results/" + snakemake.params.RDIR + "/csvs/carbon_budget_distribution.csv"
+        fn = "results/" + snakemake.params.RDIR + "csvs/carbon_budget_distribution.csv"
         if not os.path.exists(fn):
             emissions_scope = snakemake.params.emissions_scope
             report_year = snakemake.params.eurostat_report_year
+            input_co2 = snakemake.input.co2
             build_carbon_budget(
-                o, snakemake.input.eurostat, fn, emissions_scope, report_year
+                o,
+                snakemake.input.eurostat,
+                fn,
+                emissions_scope,
+                report_year,
+                input_co2,
             )
         co2_cap = pd.read_csv(fn, index_col=0).squeeze()
         limit = co2_cap.loc[investment_year]
@@ -3481,5 +3512,7 @@ if __name__ == "__main__":
         cluster_heat_buses(n)
 
     n.meta = dict(snakemake.config, **dict(wildcards=dict(snakemake.wildcards)))
+
+    sanitize_carriers(n, snakemake.config)
 
     n.export_to_netcdf(snakemake.output[0])

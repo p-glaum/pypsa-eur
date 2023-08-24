@@ -21,7 +21,8 @@ import country_converter as coco
 import numpy as np
 import pypsa
 import xarray as xr
-from _helpers import override_component_attrs, update_config_with_sector_opts
+from _helpers import update_config_with_sector_opts
+from add_electricity import sanitize_carriers
 from prepare_sector_network import cluster_heat_buses, define_spatial, prepare_costs
 
 cc = coco.CountryConverter()
@@ -128,9 +129,13 @@ def add_power_capacities_installed_before_baseyear(n, grouping_years, costs, bas
         "Oil": "oil",
         "OCGT": "OCGT",
         "CCGT": "CCGT",
-        "Natural Gas": "gas",
         "Bioenergy": "urban central solid biomass CHP",
     }
+
+    # Replace Fueltype "Natural Gas" with the respective technology (OCGT or CCGT)
+    df_agg.loc[df_agg["Fueltype"] == "Natural Gas", "Fueltype"] = df_agg.loc[
+        df_agg["Fueltype"] == "Natural Gas", "Technology"
+    ]
 
     fueltype_to_drop = [
         "Hydro",
@@ -430,15 +435,23 @@ def add_heating_capacities_installed_before_baseyear(
 
     # split existing capacities between residential and services
     # proportional to energy demand
+    p_set_sum = n.loads_t.p_set.sum()
     ratio_residential = pd.Series(
         [
             (
-                n.loads_t.p_set.sum()[f"{node} residential rural heat"]
+                p_set_sum[f"{node} residential rural heat"]
                 / (
-                    n.loads_t.p_set.sum()[f"{node} residential rural heat"]
-                    + n.loads_t.p_set.sum()[f"{node} services rural heat"]
+                    p_set_sum[f"{node} residential rural heat"]
+                    + p_set_sum[f"{node} services rural heat"]
                 )
             )
+            # if rural heating demand for one of the nodes doesn't exist,
+            # then columns were dropped before and heating demand share should be 0.0
+            if all(
+                f"{node} {service} rural heat" in p_set_sum.index
+                for service in ["residential", "services"]
+            )
+            else 0.0
             for node in nodal_df.index
         ],
         index=nodal_df.index,
@@ -600,12 +613,13 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "add_existing_baseyear",
+            configfiles="config/test/config.myopic.yaml",
             simpl="",
-            clusters="45",
-            ll="v1.0",
+            clusters="5",
+            ll="v1.5",
             opts="",
-            sector_opts="8760H-T-H-B-I-A-solar+p3-dist1",
-            planning_horizons=2020,
+            sector_opts="24H-T-H-B-I-A-solar+p3-dist1",
+            planning_horizons=2030,
         )
 
     logging.basicConfig(level=snakemake.config["logging"]["level"])
@@ -617,8 +631,8 @@ if __name__ == "__main__":
 
     baseyear = snakemake.params.baseyear
 
-    overrides = override_component_attrs(snakemake.input.overrides)
-    n = pypsa.Network(snakemake.input.network, override_component_attrs=overrides)
+    n = pypsa.Network(snakemake.input.network)
+
     # define spatial resolution of carriers
     spatial = define_spatial(n.buses[n.buses.carrier == "AC"].index, options)
     add_build_year_to_new_assets(n, baseyear)
@@ -664,5 +678,7 @@ if __name__ == "__main__":
         cluster_heat_buses(n)
 
     n.meta = dict(snakemake.config, **dict(wildcards=dict(snakemake.wildcards)))
+
+    sanitize_carriers(n, snakemake.config)
 
     n.export_to_netcdf(snakemake.output[0])

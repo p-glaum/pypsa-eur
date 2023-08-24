@@ -187,9 +187,10 @@ import time
 import atlite
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import xarray as xr
 from _helpers import configure_logging
-from dask.distributed import Client, LocalCluster
+from dask.distributed import Client
 from pypsa.geo import haversine
 from shapely.geometry import LineString
 
@@ -205,6 +206,7 @@ if __name__ == "__main__":
 
     nprocesses = int(snakemake.threads)
     noprogress = snakemake.config["run"].get("disable_progressbar", True)
+    noprogress = noprogress or not snakemake.config["atlite"]["show_progress"]
     params = snakemake.params.renewable[snakemake.wildcards.technology]
     resource = params["resource"]  # pv panel params / wind turbine params
     correction_factor = params.get("correction_factor", 1.0)
@@ -217,10 +219,13 @@ if __name__ == "__main__":
     if correction_factor != 1.0:
         logger.info(f"correction_factor is set as {correction_factor}")
 
-    cluster = LocalCluster(n_workers=nprocesses, threads_per_worker=1)
-    client = Client(cluster, asynchronous=True)
+    if nprocesses > 1:
+        client = Client(n_workers=nprocesses, threads_per_worker=1)
+    else:
+        client = None
 
-    cutout = atlite.Cutout(snakemake.input.cutout)
+    sns = pd.date_range(freq="h", **snakemake.config["snapshots"])
+    cutout = atlite.Cutout(snakemake.input.cutout).sel(time=sns)
     regions = gpd.read_file(snakemake.input.regions)
     assert not regions.empty, (
         f"List of regions in {snakemake.input.regions} is empty, please "
@@ -307,7 +312,8 @@ if __name__ == "__main__":
 
     potential = capacity_per_sqkm * availability.sum("bus") * area
     func = getattr(cutout, resource.pop("method"))
-    resource["dask_kwargs"] = {"scheduler": client}
+    if client is not None:
+        resource["dask_kwargs"] = {"scheduler": client}
     capacity_factor = correction_factor * func(capacity_factor=True, **resource)
     layout = capacity_factor * area * capacity_per_sqkm
     profile, capacities = func(
@@ -398,4 +404,6 @@ if __name__ == "__main__":
         ds["profile"] = ds["profile"].where(ds["profile"] >= min_p_max_pu, 0)
 
     ds.to_netcdf(snakemake.output.profile)
-    client.shutdown()
+
+    if client is not None:
+        client.shutdown()

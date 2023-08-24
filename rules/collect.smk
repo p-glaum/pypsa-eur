@@ -28,14 +28,16 @@ rule cluster_networks:
 rule extra_components_networks:
     input:
         expand(
-            RESOURCES + "networks/elec_s{simpl}_{clusters}_off-{offgrid}_ec.nc", **config["scenario"]
+            RESOURCES + "networks/elec_s{simpl}_{clusters}_off-{offgrid}_ec.nc",
+            **config["scenario"]
         ),
 
 
 rule prepare_elec_networks:
     input:
         expand(
-            RESOURCES + "networks/elec_s{simpl}_{clusters}_off-{offgrid}_ec_l{ll}_{opts}.nc",
+            RESOURCES
+            + "networks/elec_s{simpl}_{clusters}_off-{offgrid}_ec_l{ll}_{opts}.nc",
             **config["scenario"]
         ),
 
@@ -52,7 +54,8 @@ rule prepare_sector_networks:
 rule solve_elec_networks:
     input:
         expand(
-            RESULTS + "networks/elec_s{simpl}_{clusters}_off-{offgrid}_ec_l{ll}_{opts}.nc",
+            RESULTS
+            + "networks/elec_s{simpl}_{clusters}_off-{offgrid}_ec_l{ll}_{opts}.nc",
             **config["scenario"]
         ),
 
@@ -72,4 +75,19 @@ rule plot_networks:
             RESULTS
             + "maps/elec_s{simpl}_{clusters}_off-{offgrid}_l{ll}_{opts}_{sector_opts}-costs-all_{planning_horizons}.pdf",
             **config["scenario"]
+        ),
+
+
+rule validate_elec_networks:
+    input:
+        expand(
+            RESULTS
+            + "figures/.statistics_plots_elec_s{simpl}_{clusters}_ec_l{ll}_{opts}",
+            **config["scenario"]
+        ),
+        expand(
+            RESULTS
+            + "figures/.validation_{kind}_plots_elec_s{simpl}_{clusters}_ec_l{ll}_{opts}",
+            **config["scenario"],
+            kind=["production", "prices", "cross_border"]
         ),
