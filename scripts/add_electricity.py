@@ -185,7 +185,7 @@ def add_co2_emissions(n, costs, carriers):
     n.carriers.loc[carriers, "co2_emissions"] = costs.co2_emissions[suptechs].values
 
 
-def calculate_offwind_cost(WD, MW=12, RD=236, HH=138, SP=343, DT=8):
+def calculate_offwind_cost(WD, MW=12, RD=236, HH=138, SP=343, DT=8, year=2030):
     """
     Calculating offshore wind capex considering the average water depth of the
     region. Equations and default values from DEA technology data (https://ens.
@@ -212,6 +212,8 @@ def calculate_offwind_cost(WD, MW=12, RD=236, HH=138, SP=343, DT=8):
     capex: xarray
         Capex of the wind turbine in the different regions
     """
+    # Learning rates offshore wind Technology Data Catalogue (page 248)
+    learning_rate = {2020: 1, 2030: 0.82, 2040: 0.75, 2050: 0.72}
     RA = (RD / 2) ** 2 * np.pi
     IA = DT * RD
     wind_turbine_invest = (
@@ -245,6 +247,7 @@ def calculate_offwind_cost(WD, MW=12, RD=236, HH=138, SP=343, DT=8):
         * (1 + development_cost)
         * 1000
     )  # in €/MW
+    capex *= learning_rate[year]
     return capex
 
 

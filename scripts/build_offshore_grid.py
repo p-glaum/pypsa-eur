@@ -258,8 +258,7 @@ def create_lines_kNN(buses1, buses2, k=1):
 
 def add_wake_generators():
     mapping = (
-        n.generators[n.generators.bus.isin(offshore_regions.bus.unique())]
-        .filter(like="offwind", axis=0)
+        n.generators.filter(like="offwind", axis=0)
         .index.to_series()
         .str.replace(" offwind-\w+", "", regex=True)
     )
@@ -319,10 +318,10 @@ def add_wake_generators():
                 generators_to_add_labels.append(generator_i + " w" + str(i))
                 generators_to_add.append(generator)
                 generators_t_to_add.append(generator_t * (1 - factor_wake_losses[i]))
-    n.consistency_check()
     # delete original generators and add split generators
     n.generators.drop(index=generators_to_drop, inplace=True)
     n.generators_t.p_max_pu.drop(columns=generators_to_drop, inplace=True)
+    # add wake effect generators
     n.generators = pd.concat(
         [
             n.generators,
@@ -347,12 +346,13 @@ if __name__ == "__main__":
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(
-            "build_offshore_grid", simpl="", clusters="64", offgrid="all"
+            "build_offshore_grid", simpl="", clusters="64", offgrid="all-wake"
         )
     configure_logging(snakemake)
     n = pypsa.Network(snakemake.input.clustered_network)
-
-    offgrid = snakemake.wildcards["offgrid"]
+    offgrid_parts = snakemake.wildcards["offgrid"].split("-")
+    offgrid = offgrid_parts[0]
+    wake_effect = len(offgrid_parts) > 1 and offgrid_parts[1] == "wake"
 
     params = snakemake.params
     offgrid_config = params["offgrid"]
@@ -433,7 +433,7 @@ if __name__ == "__main__":
             ]
 
         # model wake effect for offshore generators in relevant offshore region
-        if offgrid_config["wake_effect"]:
+        if wake_effect:
             add_wake_generators()
 
         # only consider offshore regions which are bigger than 1GW and have a higher distance than 50m

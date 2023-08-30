@@ -22,7 +22,7 @@ remote:
 run:
   name: ""
   disable_progressbar: false
-  shared_resources: false
+  shared_resources: true
   shared_cutouts: true
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#foresight
@@ -175,11 +175,8 @@ renewable:
     resource:
       method: wind
       turbine: NREL_ReferenceTurbine_2020ATB_12MW_offshore
-    capacity_per_sqkm: 5 # from DEA with 8RD layout
-    correction_factor: 0.8855
-    # proxy for wake losses
-    # from 10.1016/j.energy.2018.08.153
-    # until done more rigorously in #153
+    capacity_per_sqkm: 4 # 8RD square layout -> 12/(,214*8)=4MW/km2
+    correction_factor: 0.906 # wake losses for 2GW wind farm from http://dx.doi.org/10.2139/ssrn.3885492
     #corine: [44, 255]
     natura: true
     ship_threshold: 400
@@ -195,11 +192,8 @@ renewable:
     resource:
       method: wind
       turbine: NREL_ReferenceTurbine_2020ATB_12MW_offshore
-    capacity_per_sqkm: 6 # from DEA with 8RD layout
-    correction_factor: 0.8855
-    # proxy for wake losses
-    # from 10.1016/j.energy.2018.08.153
-    # until done more rigorously in #153
+    capacity_per_sqkm: 4 # 8RD square layout -> 12/(,214*8)=4MW/km2
+    correction_factor: 0.906 # wake losses for 2GW wind farm from http://dx.doi.org/10.2139/ssrn.3885492
     #corine: [44, 255]
     natura: true
     ship_threshold: 400
@@ -213,11 +207,8 @@ renewable:
     resource:
       method: wind
       turbine: NREL_ReferenceTurbine_2020ATB_12MW_offshore
-    capacity_per_sqkm: 6 # from DEA with 8RD layout
-    correction_factor: 0.8855
-    # proxy for wake losses
-    # from 10.1016/j.energy.2018.08.153
-    # until done more rigorously in #153
+    capacity_per_sqkm: 4 # 8RD square layout -> 12/(,214*8)=4MW/km2
+    correction_factor: 0.906 # wake losses for 2GW wind farm from http://dx.doi.org/10.2139/ssrn.3885492
     #corine: [44, 255]
     natura: true
     ship_threshold: 400
@@ -614,7 +605,6 @@ offshore_grid:
   p2p_connection: true
   countries: [] #countries for which to build offshore grid
   sea_region: "" #path to shape file for which to split regions and build offshore grid
-  wake_effect: true #whether to consider wake effect for offshore generators
 
 clustering:
   simplify_network:
