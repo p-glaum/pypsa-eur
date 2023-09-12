@@ -336,7 +336,7 @@ def create_network_topology(
     ).fillna(0)
 
     # whether want to consider offshore H2 grid
-    if not options.get("H2_network_offshore", False):
+    if not "H2" in snakemake.wildcards["offgrid"]:
         candidates.drop(
             candidates.filter(like="off", axis=0).index, axis=0, inplace=True
         )
@@ -1112,16 +1112,27 @@ def add_storage_and_grids(n, costs):
     logger.info("Add hydrogen storage")
 
     nodes = pop_layout.index
+    # whether want to consider offshore H2 grid
+    if "H2" in snakemake.wildcards["offgrid"]:
+        offshore_nodes = n.buses.filter(like="off_", axis=0).index
+    else:
+        offshore_nodes = pd.Index([])
 
     n.add("Carrier", "H2")
 
-    n.madd("Bus", nodes + " H2", location=nodes, carrier="H2", unit="MWh_LHV")
+    n.madd(
+        "Bus",
+        nodes.append(offshore_nodes) + " H2",
+        location=nodes.append(offshore_nodes),
+        carrier="H2",
+        unit="MWh_LHV",
+    )
 
     n.madd(
         "Link",
-        nodes + " H2 Electrolysis",
-        bus1=nodes + " H2",
-        bus0=nodes,
+        nodes.append(offshore_nodes) + " H2 Electrolysis",
+        bus1=nodes.append(offshore_nodes) + " H2",
+        bus0=nodes.append(offshore_nodes),
         p_nom_extendable=True,
         carrier="H2 Electrolysis",
         efficiency=costs.at["electrolysis", "efficiency"],
@@ -3346,10 +3357,10 @@ if __name__ == "__main__":
             "prepare_sector_network",
             simpl="",
             opts="",
-            clusters="37",
+            clusters="64",
             offgrid="all",
             ll="v1.5",
-            sector_opts="Co2L0-25H-T-H-B-I-A-onwind+p0.25-solar+p3-linemaxext20",
+            sector_opts="Co2L0-3H-T-H-B-I-A-onwind+p0.25-solar+p3",
             planning_horizons="2050",
         )
 

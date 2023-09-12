@@ -350,9 +350,8 @@ if __name__ == "__main__":
         )
     configure_logging(snakemake)
     n = pypsa.Network(snakemake.input.clustered_network)
-    offgrid_parts = snakemake.wildcards["offgrid"].split("-")
-    offgrid = offgrid_parts[0]
-    wake_effect = len(offgrid_parts) > 1 and offgrid_parts[1] == "wake"
+    offgrid = snakemake.wildcards["offgrid"].split("-")[0]
+    wake_effect = "wake" in snakemake.wildcards["offgrid"]
 
     params = snakemake.params
     offgrid_config = params["offgrid"]
