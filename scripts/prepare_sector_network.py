@@ -558,12 +558,15 @@ def remove_elec_base_techs(n):
 # TODO: PyPSA-Eur merge issue
 def remove_non_electric_buses(n):
     """
-    Remove buses from pypsa-eur with carriers which are not AC buses.
+    Remove buses from pypsa-eur with carriers which are not AC, DC or offwind
+    buses.
     """
-    to_drop = list(n.buses.query("carrier not in ['AC', 'DC']").carrier.unique())
+    to_drop = list(
+        n.buses.query("carrier not in ['AC', 'DC', 'offwind']").carrier.unique()
+    )
     if to_drop:
         logger.info(f"Drop buses from PyPSA-Eur with carrier: {to_drop}")
-        n.buses = n.buses[n.buses.carrier.isin(["AC", "DC"])]
+        n.buses = n.buses[n.buses.carrier.isin(["AC", "DC", "offwind"])]
 
 
 def patch_electricity_network(n):
@@ -1115,24 +1118,40 @@ def add_storage_and_grids(n, costs):
     # whether want to consider offshore H2 grid
     if "H2" in snakemake.wildcards["offgrid"]:
         offshore_nodes = n.buses.filter(like="off_", axis=0).index
-    else:
-        offshore_nodes = pd.Index([])
+        n.madd(
+            "Bus",
+            offshore_nodes + " H2",
+            location=offshore_nodes,
+            carrier="H2",
+            unit="MWh_LHV",
+        )
+        n.madd(
+            "Link",
+            offshore_nodes + " H2 Electrolysis",
+            bus1=offshore_nodes + " H2",
+            bus0=offshore_nodes.str.replace("off_", "offwind_"),
+            p_nom_extendable=True,
+            carrier="H2 Electrolysis",
+            efficiency=costs.at["electrolysis", "efficiency"],
+            capital_cost=costs.at["electrolysis offshore", "fixed"],
+            lifetime=costs.at["electrolysis", "lifetime"],
+        )
 
     n.add("Carrier", "H2")
 
     n.madd(
         "Bus",
-        nodes.append(offshore_nodes) + " H2",
-        location=nodes.append(offshore_nodes),
+        nodes + " H2",
+        location=nodes,
         carrier="H2",
         unit="MWh_LHV",
     )
 
     n.madd(
         "Link",
-        nodes.append(offshore_nodes) + " H2 Electrolysis",
-        bus1=nodes.append(offshore_nodes) + " H2",
-        bus0=nodes.append(offshore_nodes),
+        nodes + " H2 Electrolysis",
+        bus1=nodes + " H2",
+        bus0=nodes,
         p_nom_extendable=True,
         carrier="H2 Electrolysis",
         efficiency=costs.at["electrolysis", "efficiency"],
@@ -3358,9 +3377,9 @@ if __name__ == "__main__":
             simpl="",
             opts="",
             clusters="64",
-            offgrid="all",
-            ll="v1.5",
-            sector_opts="Co2L0-3H-T-H-B-I-A-onwind+p0.25-solar+p3",
+            offgrid="all-wake-H2",
+            ll="v1.0",
+            sector_opts="Co2L0-3H-T-H-B-I-A-onwind+p0.25-solar+p3-variable+cost-linemaxext20",
             planning_horizons="2050",
         )
 

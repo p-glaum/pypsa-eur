@@ -298,6 +298,7 @@ load:
 pypsa_eur:
   Bus:
   - AC
+  - offwind
   Link:
   - DC
   Generator:

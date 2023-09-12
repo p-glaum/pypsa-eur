@@ -105,7 +105,7 @@ def move_generators(offshore_regions):
     )
 
     # Add prefix to generator to know it is attached to an offshore bus
-    prefix = "off_"
+    prefix = "offwind_"
     move_generators = prefix + move_generators
 
     # Now only filter the offshore generators for which an offshore bus exists and move generators
@@ -113,20 +113,19 @@ def move_generators(offshore_regions):
     n.generators.loc[move_generators.index, "bus"] = move_generators
 
     # Only consider turbine cost and substation cost for offshore generators connected to offshore grid
-    n.generators.loc[move_generators.index, "capital_cost"] = (
-        n.generators.loc[move_generators.index, "turbine_cost"]
-        + n.generators.loc[move_generators.index, "substation_cost"]
-    )
+    n.generators.loc[move_generators.index, "capital_cost"] = n.generators.loc[
+        move_generators.index, "turbine_cost"
+    ]
     rename_index = dict(zip(move_generators.index, prefix + move_generators.index))
     n.generators.rename(index=rename_index, inplace=True)
     n.generators_t.p_max_pu.rename(columns=rename_index, inplace=True)
 
 
-def add_links(df):
+def add_links(df, carrier="DC"):
     n.madd(
         "Link",
         names=df.index,
-        carrier="DC",
+        carrier=carrier,
         bus0=df["bus0"].values,
         bus1=df["bus1"].values,
         length=df["length"].values,
@@ -162,7 +161,7 @@ def add_p2p_connections():
 def add_offshore_bus_connections():
     # Create line for every offshore bus and connect it to onshore buses
     onshore_coords = n.buses.loc[offshore_regions.bus.unique(), ["x", "y"]]
-    offshore_buses_coord = n.buses.loc[n.buses.index.str.contains("off"), ["x", "y"]]
+    offshore_buses_coord = n.buses.loc[n.buses.index.str.contains("off_"), ["x", "y"]]
     offshore_hub_coord = n.buses.loc[n.buses.index.str.contains("hub"), ["x", "y"]]
     coords = pd.concat([onshore_coords, offshore_buses_coord, offshore_hub_coord])
     coords["xy"] = list(map(tuple, (coords[["x", "y"]]).values))
@@ -449,6 +448,26 @@ if __name__ == "__main__":
             y=offshore_regions["y_region"].values,
             substation_off=True,
             country=offshore_regions["country"].values,
+        )
+
+        # add wind bus to separate offshore wind electricity connection from electrolysis
+        n.madd(
+            "Bus",
+            names="offwind_" + offshore_regions.index,
+            carrier="offwind",
+            x=offshore_regions["x_region"].values,
+            y=offshore_regions["y_region"].values,
+            substation_off=True,
+            country=offshore_regions["country"].values,
+        )
+        # Link to wind bus to offshore substation
+        n.madd(
+            "Link",
+            names="offwind_link_" + offshore_regions.index,
+            bus0="offwind_" + offshore_regions.index,
+            bus1="off_" + offshore_regions.index,
+            capital_cost=costs.at["offshore-node", "capital_cost"],
+            carrier="offshore_substation",
         )
 
         if offgrid_config["p2p_connection"]:
