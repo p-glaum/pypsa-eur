@@ -414,7 +414,7 @@ def update_transmission_costs(n, costs, length_factor=1.0):
             (1.0 - n.links.loc[dc_b, "underwater_fraction"])
             * costs.at["HVDC overhead", "capital_cost"]
             + n.links.loc[dc_b, "underwater_fraction"]
-            * costs.at["offshore-branch", "capital_cost"]
+            * costs.at["offshore-branch-submarine", "capital_cost"]
         )
         + costs.at["HVDC inverter pair", "capital_cost"]
     )
@@ -447,9 +447,9 @@ def attach_wind_and_solar(
                     * ds["average_distance"].to_pandas()
                     * (
                         underwater_fraction
-                        * costs.at["offshore-branch", "capital_cost"]
+                        * costs.at["offshore-branch-submarine", "capital_cost"]
                         + (1.0 - underwater_fraction)
-                        * costs.at["HVDC overhead", "capital_cost"]
+                        * costs.at["offshore-branch-underground", "capital_cost"]
                     )
                 )
                 grid_connection_cost = (

@@ -18,6 +18,8 @@ Top-level configuration
 
 "Private" refers to local, machine-specific settings or data meant for personal use, not to be shared. "Remote" indicates the address of a server used for data exchange, often for clusters and data pushing/pulling.
 
+"Private" refers to local, machine-specific settings or data meant for personal use, not to be shared. "Remote" indicates the address of a server used for data exchange, often for clusters and data pushing/pulling.
+
 .. literalinclude:: ../config/config.default.yaml
    :language: yaml
    :start-at: version:
@@ -246,7 +248,7 @@ Define and specify the ``atlite.Cutout`` used for calculating renewable potentia
 
 .. csv-table::
    :header-rows: 1
-   :widths: 25,7,22,30
+   :widths: 22,7,22,33
    :file: configtables/offwind-near.csv
 
 .. note::
@@ -269,12 +271,13 @@ Define and specify the ``atlite.Cutout`` used for calculating renewable potentia
 
 .. csv-table::
    :header-rows: 1
-   :widths: 25,7,22,30
+   :widths: 22,7,22,33
    :file: configtables/offwind-far.csv
 
 .. note::
    both ``offwind-near`` and ``offwind-far`` have the same assumption on
    ``capacity_per_sqkm`` and ``correction_factor``.
+
 
 ``solar``
 ---------------

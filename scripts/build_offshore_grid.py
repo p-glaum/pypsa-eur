@@ -153,7 +153,9 @@ def add_p2p_connections():
     # add lines only as DC links and don't consider AC anymore -> cost from DEA for AC links are currently taken but they are actually not tech specific
     line_length_factor = params["length_factor"]
     p2p_lines_df["cost"] = p2p_lines_df["length"].apply(
-        lambda x: x * line_length_factor * costs.at["offshore-branch", "capital_cost"]
+        lambda x: x
+        * line_length_factor
+        * costs.at["offshore-branch-submarine", "capital_cost"]
     )
     add_links(p2p_lines_df)
 
@@ -191,7 +193,7 @@ def add_offshore_bus_connections():
         hub_lines["cost"] = hub_lines["length"].apply(
             lambda x: x
             * line_length_factor
-            * costs.at["offshore-branch", "capital_cost"]
+            * costs.at["offshore-branch-submarine", "capital_cost"]
         )
         add_links(hub_lines)
 
@@ -214,7 +216,9 @@ def add_offshore_bus_connections():
     lines_df.drop(lines_df.query("length==0").index, inplace=True)
     lines_df.index = "off_" + lines_df.index.astype("str")
     lines_df["cost"] = lines_df["length"].apply(
-        lambda x: x * line_length_factor * costs.at["offshore-branch", "capital_cost"]
+        lambda x: x
+        * line_length_factor
+        * costs.at["offshore-branch-submarine", "capital_cost"]
     )
     add_links(lines_df)
 
@@ -463,11 +467,11 @@ if __name__ == "__main__":
         # Link to wind bus to offshore substation
         n.madd(
             "Link",
-            names="offwind_link_" + offshore_regions.index,
+            names="off-substation_" + offshore_regions.index,
             bus0="offwind_" + offshore_regions.index,
             bus1="off_" + offshore_regions.index,
             capital_cost=costs.at["offshore-node", "capital_cost"],
-            carrier="offshore_substation",
+            carrier="offshore-substation",
         )
 
         if offgrid_config["p2p_connection"]:

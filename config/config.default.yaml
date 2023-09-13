@@ -22,7 +22,7 @@ remote:
 run:
   name: ""
   disable_progressbar: false
-  shared_resources: true
+  shared_resources: false
   shared_cutouts: true
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#foresight
@@ -301,6 +301,7 @@ pypsa_eur:
   - offwind
   Link:
   - DC
+  - offshore-substation
   Generator:
   - onwind
   - offwind-near
@@ -501,6 +502,16 @@ sector:
   electricity_distribution_grid: true
   electricity_distribution_grid_cost_factor: 1.0
   electricity_grid_connection: true
+  transmission_efficiency:
+    DC:
+      efficiency_static: 0.98
+      efficiency_per_1000km: 0.977
+    H2 pipeline:
+      efficiency_per_1000km: 1 # 0.979
+      compression_per_1000km: 0.019
+    gas pipeline:
+      efficiency_per_1000km: 1 #0.977
+      compression_per_1000km: 0.01
   H2_network: true
   H2_network_offshore: false
   gas_network: false
@@ -537,6 +548,9 @@ industry:
   H2_DRI: 1.7
   elec_DRI: 0.322
   Al_primary_fraction:
+  H2_DRI: 1.7
+  elec_DRI: 0.322
+  Al_primary_fraction:
     2020: 0.4
     2025: 0.375
     2030: 0.35
@@ -544,6 +558,11 @@ industry:
     2040: 0.3
     2045: 0.25
     2050: 0.2
+  MWh_NH3_per_tNH3: 5.166
+  MWh_CH4_per_tNH3_SMR: 10.8
+  MWh_elec_per_tNH3_SMR: 0.7
+  MWh_H2_per_tNH3_electrolysis: 6.5
+  MWh_elec_per_tNH3_electrolysis: 1.17
   MWh_NH3_per_tNH3: 5.166
   MWh_CH4_per_tNH3_SMR: 10.8
   MWh_elec_per_tNH3_SMR: 0.7
@@ -597,6 +616,7 @@ costs:
     battery: 0.
     battery inverter: 0.
   emission_prices:
+  emission_prices:
     co2: 0.
 
 offshore_grid:
@@ -609,6 +629,7 @@ offshore_grid:
 
 clustering:
   simplify_network:
+    to_substations: false
     to_substations: false
     algorithm: kmeans # choose from: [hac, kmeans]
     feature: solar+onwind-time # only for hac. choose from: [solar+onwind-time, solar+onwind-cap, solar-time, solar-cap, solar+offwind-cap] etc.
@@ -1031,6 +1052,7 @@ plotting:
     other: '#000000'
     geothermal: '#ba91b1'
     AC: "#70af1d"
+    AC-AC: "#70af1d"
     AC line: "#70af1d"
     links: "#8a1caf"
     HVDC links: "#8a1caf"

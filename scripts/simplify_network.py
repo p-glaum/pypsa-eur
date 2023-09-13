@@ -161,7 +161,7 @@ def _prepare_connection_costs_per_link(n, costs, renewable_carriers, length_fact
                 * length_factor
                 * (
                     n.links.underwater_fraction
-                    * costs.at["offshore-branch", "capital_cost"]
+                    * costs.at["offshore-branch-submarine", "capital_cost"]
                     + (1.0 - n.links.underwater_fraction)
                     * costs.at["HVDC overhead", "capital_cost"]
                 )
