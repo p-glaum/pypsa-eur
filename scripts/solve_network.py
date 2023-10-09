@@ -590,8 +590,9 @@ def add_transmission_limit(n):
     factor = snakemake.wildcards.ll[1:]
 
     if factor != "opt" and factor != "1.0":
+        # factor 0.05 because then only tyndp links onshore are considered. Validated by plotting the links
         links_dc_b = (
-            (n.links.carrier == "DC") & (n.links.underwater_fraction >= 0.1)
+            (n.links.carrier == "DC") & (n.links.underwater_fraction <= 0.05)
             if not n.links.empty
             else pd.Series()
         )

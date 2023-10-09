@@ -467,11 +467,12 @@ if __name__ == "__main__":
         # Link to wind bus to offshore substation
         n.madd(
             "Link",
-            names="off-substation_" + offshore_regions.index,
+            names="offstation_" + offshore_regions.index,
             bus0="offwind_" + offshore_regions.index,
             bus1="off_" + offshore_regions.index,
             capital_cost=costs.at["offshore-node", "capital_cost"],
             carrier="offshore-substation",
+            p_nom_extendable=True,
         )
 
         if offgrid_config["p2p_connection"]:
