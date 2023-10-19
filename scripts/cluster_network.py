@@ -421,9 +421,10 @@ def clustering_for_n_clusters(
 
     if not n.links.empty:
         nc = clustering.network
-        nc.links["underwater_fraction"] = (
-            n.links.eval("underwater_fraction * length").div(nc.links.length).dropna()
-        )
+        # commented out because this underestimates the underwater fraction significantly
+        # nc.links["underwater_fraction"] = (
+        #    n.links.eval("underwater_fraction * length").div(nc.links.length).dropna()
+        # )
         nc.links["capital_cost"] = nc.links["capital_cost"].add(
             (nc.links.length - n.links.length)
             .clip(lower=0)
@@ -463,7 +464,7 @@ if __name__ == "__main__":
     if "snakemake" not in globals():
         from _helpers import mock_snakemake
 
-        snakemake = mock_snakemake("cluster_network", simpl="", clusters="37")
+        snakemake = mock_snakemake("cluster_network", simpl="", clusters="68")
     configure_logging(snakemake)
 
     params = snakemake.params

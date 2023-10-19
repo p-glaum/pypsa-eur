@@ -86,6 +86,24 @@ def get_region_intersections(regions):
     return intesections
 
 
+def update_existing_offshore_link_costs(n, costs):
+    """
+    This method updates the costs of existing offshore links.
+
+    To make them comparable to the offshore grid costs, we do not
+    consider any onshore fractions for the cables.
+    """
+    line_length_factor = params["length_factor"]
+    dc_b = (n.links.carrier == "DC") & (n.links.underwater_fraction > 0.7)
+    capital_cost = (
+        n.links.loc[dc_b, "length"]
+        * line_length_factor
+        * (costs.at["offshore-branch-submarine", "capital_cost"])
+        + costs.at["HVDC inverter pair", "capital_cost"]
+    )
+    n.links.loc[dc_b, "capital_cost"] = capital_cost
+
+
 def move_generators(offshore_regions):
     """
     This method attached the previously to onshore buses offshore generators to
@@ -386,6 +404,7 @@ if __name__ == "__main__":
             Nyears,
         )
 
+        update_existing_offshore_link_costs(n, costs)
         offshore_generators = (
             n.generators.filter(regex="offwind", axis=0)
             .loc[:, ["p_nom_max", "bus"]]
@@ -458,7 +477,7 @@ if __name__ == "__main__":
         n.madd(
             "Bus",
             names="offwind_" + offshore_regions.index,
-            carrier="offwind",
+            carrier="AC",
             x=offshore_regions["x_region"].values,
             y=offshore_regions["y_region"].values,
             substation_off=True,
