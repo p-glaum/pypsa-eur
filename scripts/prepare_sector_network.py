@@ -335,6 +335,10 @@ def create_network_topology(
         [n.lines[ln_attrs], n.links.loc[n.links.carrier.isin(carriers), lk_attrs]]
     ).fillna(0)
 
+    # do not consider p2p from offwind bus (where the generator is attached)
+    candidates.drop(
+        candidates.filter(like="off_p2p", axis=0).index, axis=0, inplace=True
+    )
     # whether want to consider offshore H2 grid
     if not "H2" in snakemake.wildcards["offgrid"]:
         candidates.drop(
@@ -344,6 +348,11 @@ def create_network_topology(
     # base network topology purely on location not carrier
     candidates["bus0"] = candidates.bus0.map(n.buses.location)
     candidates["bus1"] = candidates.bus1.map(n.buses.location)
+
+    # quick fix to only build a gas node for off_ bus and not offwind_
+    candidates.index = candidates.index.str.replace("offwind_", "off_")
+    candidates.bus0 = candidates.bus0.str.replace("offwind_", "off_")
+    candidates.bus1 = candidates.bus1.str.replace("offwind_", "off_")
 
     positive_order = candidates.bus0 < candidates.bus1
     candidates_p = candidates[positive_order]
@@ -562,12 +571,10 @@ def remove_non_electric_buses(n):
     Remove buses from pypsa-eur with carriers which are not AC, DC or offwind
     buses.
     """
-    to_drop = list(
-        n.buses.query("carrier not in ['AC', 'DC', 'offwind']").carrier.unique()
-    )
+    to_drop = list(n.buses.query("carrier not in ['AC', 'DC']").carrier.unique())
     if to_drop:
         logger.info(f"Drop buses from PyPSA-Eur with carrier: {to_drop}")
-        n.buses = n.buses[n.buses.carrier.isin(["AC", "DC", "offwind"])]
+        n.buses = n.buses[n.buses.carrier.isin(["AC", "DC"])]
 
 
 def patch_electricity_network(n):
@@ -1118,7 +1125,11 @@ def add_storage_and_grids(n, costs):
     nodes = pop_layout.index
     # whether want to consider offshore H2 grid
     if "H2" in snakemake.wildcards["offgrid"]:
-        offshore_nodes = n.buses.filter(like="off_", axis=0).index
+        if n.buses.filter(like="off_", axis=0).empty:
+            offshore_nodes = n.buses.filter(like="offwind_", axis=0).index
+            offshore_nodes = offshore_nodes.str.replace("offwind_", "off_")
+        else:
+            offshore_nodes = n.buses.filter(like="off_", axis=0).index
         n.madd(
             "Bus",
             offshore_nodes + " H2",
@@ -1129,8 +1140,8 @@ def add_storage_and_grids(n, costs):
         n.madd(
             "Link",
             offshore_nodes + " H2 Electrolysis",
-            bus1=offshore_nodes + " H2",
             bus0=offshore_nodes.str.replace("off_", "offwind_"),
+            bus1=offshore_nodes + " H2",
             p_nom_extendable=True,
             carrier="H2 Electrolysis",
             efficiency=costs.at["electrolysis", "efficiency"],
@@ -3378,7 +3389,7 @@ def set_temporal_aggregation(n, opts, solver_name):
 def lossy_bidirectional_links(n, carrier, efficiencies={}):
     "Split bidirectional links into two unidirectional links to include transmission losses."
 
-    carrier_i = n.links.query("carrier == @carrier").index
+    carrier_i = n.links[(n.links.carrier == carrier) & (n.links.p_min_pu != 0)].index
 
     if (
         not any((v != 1.0) or (v >= 0) for v in efficiencies.values())
@@ -3414,7 +3425,7 @@ def lossy_bidirectional_links(n, carrier, efficiencies={}):
     n.links["reversed"] = n.links["reversed"].fillna(False)
 
     # do compression losses after concatenation to take electricity consumption at bus0 in either direction
-    carrier_i = n.links.query("carrier == @carrier").index
+    carrier_i = n.links[(n.links.carrier == carrier) & (n.links.p_min_pu != 0)].index
     if compression_per_1000km > 0:
         n.links.loc[carrier_i, "bus2"] = n.links.loc[carrier_i, "bus0"].map(
             n.buses.location
@@ -3422,6 +3433,15 @@ def lossy_bidirectional_links(n, carrier, efficiencies={}):
         n.links.loc[carrier_i, "efficiency2"] = (
             -compression_per_1000km * n.links.loc[carrier_i, "length"] / 1e3
         )
+
+
+def update_p2p_connection_cost(n, factor=2 / 3):
+    new_cost = (
+        n.links.filter(like="off_p2p", axis=0).capital_cost
+        + costs.at["offshore-node", "fixed"]
+    ) * factor
+    new_cost.index = new_cost.index.str.replace("off_", "offwind_")
+    n.links.loc[new_cost.index, "capital_cost"] = new_cost
 
 
 if __name__ == "__main__":
@@ -3435,7 +3455,7 @@ if __name__ == "__main__":
             clusters="64",
             offgrid="all-wake-H2",
             ll="v1.0",
-            sector_opts="Co2L0-3H-T-H-B-I-A-onwind+p0.25-solar+p3-variable+cost-linemaxext20",
+            sector_opts="Co2L0-3H-T-H-B-I-A-onwind+p0.25-solar+p3-variable+cost-linemaxext20-p2p+0.66",
             planning_horizons="2050",
         )
 
@@ -3589,6 +3609,13 @@ if __name__ == "__main__":
 
     if options["electricity_grid_connection"]:
         add_electricity_grid_connection(n, costs)
+
+    for o in opts:
+        if not o[:4] == "p2p+":
+            continue
+        factor = float(o[4:])
+        update_p2p_connection_cost(n, factor)
+        break
 
     for k, v in options["transmission_efficiency"].items():
         lossy_bidirectional_links(n, k, v)

@@ -269,7 +269,7 @@ if __name__ == "__main__":
         excluder.add_raster(
             snakemake.input.gebco,
             codes=func,
-            crs=4236,
+            crs=4326,
             nodata=-1000,
             allow_no_overlap=True,
         )
@@ -279,7 +279,7 @@ if __name__ == "__main__":
         excluder.add_raster(
             snakemake.input.gebco,
             codes=func,
-            crs=4236,
+            crs=4326,
             nodata=-1000,
             invert=True,
             allow_no_overlap=True,

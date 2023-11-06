@@ -148,13 +148,42 @@ def add_links(df, carrier="DC"):
         bus1=df["bus1"].values,
         length=df["length"].values,
         capital_cost=df["cost"].values,
+        p_min_pu=df["p_min_pu"].values,
         underwater_fraction=1,
         p_nom_extendable=True,
     )
 
 
+def add_wind_p2p_connections():
+    # Creates a link between offshore generators and onshore buses as point to point connection instead of directly assigning the offshore generator to the onshore bus
+
+    offshore_buses_name = n.buses.loc["offwind_" + offshore_regions.index].index
+    onshore_buses_name = offshore_regions.bus
+    p2p_lines_df = pd.DataFrame(
+        {"bus0": offshore_buses_name, "bus1": onshore_buses_name}
+    ).reset_index(drop=True)
+    p2p_lines_df.index = "offwind_p2p_" + p2p_lines_df.index.astype("str")
+    p2p_lines_df.loc[:, "length"] = p2p_lines_df.apply(
+        lambda x: haversine(
+            n.buses.loc[x.bus0, ["x", "y"]], n.buses.loc[x.bus1, ["x", "y"]]
+        ).item(),
+        axis=1,
+    )
+    # line cost are DC but substation is from DEA which is not technology specific
+    line_length_factor = params["length_factor"]
+    p2p_lines_df["cost"] = p2p_lines_df["length"].apply(
+        lambda x: x
+        * line_length_factor
+        * costs.at["offshore-branch-submarine", "capital_cost"]
+        + costs.at["onshore-node", "capital_cost"]
+        + costs.at["offshore-node", "capital_cost"]
+    )
+    p2p_lines_df["p_min_pu"] = 0
+    add_links(p2p_lines_df)
+
+
 def add_p2p_connections():
-    # Creates a link between offshore generators and connected onshore buses as point to point connection instead of directly assigning the offshore generator to the onshore bus
+    # Creates a link between offshore buses and connected onshore buses as point to point connection.
 
     offshore_buses_name = n.buses.loc["off_" + offshore_regions.index].index
     onshore_buses_name = offshore_regions.bus
@@ -168,13 +197,15 @@ def add_p2p_connections():
         ).item(),
         axis=1,
     )
-    # add lines only as DC links and don't consider AC anymore -> cost from DEA for AC links are currently taken but they are actually not tech specific
+    # p2p connections are DC and onshore not considers the conversion back to AC
     line_length_factor = params["length_factor"]
     p2p_lines_df["cost"] = p2p_lines_df["length"].apply(
         lambda x: x
         * line_length_factor
         * costs.at["offshore-branch-submarine", "capital_cost"]
+        + costs.at["onshore-node", "capital_cost"]
     )
+    p2p_lines_df["p_min_pu"] = -1
     add_links(p2p_lines_df)
 
 
@@ -225,7 +256,7 @@ def add_offshore_bus_connections():
 
     lines_df = pd.concat([offshore_lines, onshore_lines], axis=0, ignore_index=True)
     lines_df = lines_df.rename(
-        columns={"source": "bus0", "target": "bus1", "weight": "length"}
+        columns={"source": "bus1", "target": "bus0", "weight": "length"}
     ).astype({"bus0": "string", "bus1": "string", "length": "float"})
     lines_df.loc[:, "length"] = lines_df.apply(
         lambda x: haversine(coords.loc[x.bus0, "xy"], coords.loc[x.bus1, "xy"]).item(),
@@ -237,6 +268,14 @@ def add_offshore_bus_connections():
         lambda x: x
         * line_length_factor
         * costs.at["offshore-branch-submarine", "capital_cost"]
+    )
+    lines_df["p_min_pu"] = -1
+    # remove lines which are already added by p2p connections
+    lines_df.drop(
+        lines_df.reset_index().merge(
+            n.links, on=["bus0", "bus1"], how="inner", indicator=True
+        )["index"],
+        inplace=True,
     )
     add_links(lines_df)
 
@@ -462,17 +501,6 @@ if __name__ == "__main__":
 
         offshore_regions["yield"] = offshore_regions.eval("p_nom_max * cf")
 
-        # create buses for offshore regions
-        n.madd(
-            "Bus",
-            names="off_" + offshore_regions.index,
-            v_nom=220,
-            x=offshore_regions["x_region"].values,
-            y=offshore_regions["y_region"].values,
-            substation_off=True,
-            country=offshore_regions["country"].values,
-        )
-
         # add wind bus to separate offshore wind electricity connection from electrolysis
         n.madd(
             "Bus",
@@ -483,19 +511,32 @@ if __name__ == "__main__":
             substation_off=True,
             country=offshore_regions["country"].values,
         )
-        # Link to wind bus to offshore substation
-        n.madd(
-            "Link",
-            names="offstation_" + offshore_regions.index,
-            bus0="offwind_" + offshore_regions.index,
-            bus1="off_" + offshore_regions.index,
-            capital_cost=costs.at["offshore-node", "capital_cost"],
-            carrier="offshore-substation",
-            p_nom_extendable=True,
-        )
+
+        if offgrid:
+            # create buses for offshore regions
+            n.madd(
+                "Bus",
+                names="off_" + offshore_regions.index,
+                x=offshore_regions["x_region"].values,
+                y=offshore_regions["y_region"].values,
+                substation_off=True,
+                country=offshore_regions["country"].values,
+            )
+            # Link to wind bus to offshore substation
+            n.madd(
+                "Link",
+                names="offstation_" + offshore_regions.index,
+                bus0="offwind_" + offshore_regions.index,
+                bus1="off_" + offshore_regions.index,
+                capital_cost=costs.at["offshore-node", "capital_cost"],
+                carrier="offshore-substation",
+                p_nom_extendable=True,
+            )
+            add_p2p_connections()
 
         if offgrid_config["p2p_connection"]:
-            add_p2p_connections()
+            # creates a p2p connection from wind bus to onshore bus
+            add_wind_p2p_connections()
 
         # cluster buses to simplify grid or to get hubs
         if offgrid.isnumeric():
