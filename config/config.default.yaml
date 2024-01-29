@@ -121,8 +121,8 @@ electricity:
     year: 2020
     expansion_limit: false
     technology_mapping:
-      # Wind is the Fueltype in powerplantmatching, onwind, offwind-{ac,dc} the carrier in PyPSA-Eur
-      Offshore: [offwind-near, offwind-far, offwind-float]
+      # Wind is the Fueltype in powerplantmatching, onwind, offwind-{near,far} the carrier in PyPSA-Eur
+      Offshore: [offwind-near, offwind-far]
       Onshore: [onwind]
       PV: [solar]
 

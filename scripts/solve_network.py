@@ -140,6 +140,34 @@ def add_co2_sequestration_limit(n, limit=200):
     )
 
 
+def set_extendable_lines(n, factor):
+    _lines_s_nom = (
+        np.sqrt(3)
+        * n.lines.type.map(n.line_types.i_nom)
+        * n.lines.num_parallel
+        * n.lines.bus0.map(n.buses.v_nom)
+    )
+    lines_s_nom = n.lines.s_nom.where(n.lines.type == "", _lines_s_nom)
+    links_dc_b = n.links.carrier == "DC" if not n.links.empty else pd.Series()
+    if factor == "opt" or float(factor) > 1.0:
+        n.lines["s_nom_min"] = lines_s_nom
+        n.lines["s_nom_extendable"] = True
+
+        n.links.loc[links_dc_b, "p_nom_min"] = n.links.loc[links_dc_b, "p_nom"]
+        n.links.loc[links_dc_b, "p_nom_extendable"] = True
+    elif float(factor) == 1.0:
+        n.lines["s_nom_extendable"] = False
+        n.links.loc[links_dc_b, "p_nom_extendable"] = False
+        # do not consider submarine cables for transmission limit
+        links_dc_b = (
+            (n.links.carrier == "DC") & (n.links.underwater_fraction > 0.7)
+            if not n.links.empty
+            else pd.Series()
+        )
+        n.links.loc[links_dc_b, "p_nom_min"] = n.links.loc[links_dc_b, "p_nom"]
+        n.links.loc[links_dc_b, "p_nom_extendable"] = True
+
+
 def prepare_network(
     n,
     solve_opts=None,
@@ -148,6 +176,8 @@ def prepare_network(
     planning_horizons=None,
     co2_sequestration_potential=None,
 ):
+    set_extendable_lines(n, snakemake.wildcards.ll[1:])
+
     if "clip_p_max_pu" in solve_opts:
         for df in (
             n.generators_t.p_max_pu,
@@ -700,13 +730,13 @@ if __name__ == "__main__":
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(
-            "solve_network",
+            "solve_sector_network",
             simpl="",
             opts="",
             clusters="64",
-            offgrid="all",
+            offgrid="all-wake",
             ll="v1.0",
-            sector_opts="Co2L0-25H-T-H-B-I-A-onwind+p0.25-solar+p3-linemaxext20",
+            sector_opts="Co2L0-3H-T-H-B-I-A-onwind+p0.25-solar+p3-variable+cost-linemaxext20",
             planning_horizons="2050",
         )
     configure_logging(snakemake)

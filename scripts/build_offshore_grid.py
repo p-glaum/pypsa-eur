@@ -116,7 +116,10 @@ def move_generators(offshore_regions):
     """
     # Gets all offshore generators of the of the bus to which the offshore region is connected. Therefore, generators for which no offshore bus exists are included
     move_generators = (
-        n.generators[n.generators.bus.isin(offshore_regions.bus.unique())]
+        n.generators[
+            n.generators.bus.isin(offshore_regions.bus.unique())
+            & (n.generators.carrier.str.contains("offwind-far|offwind-float"))
+        ]
         .filter(like="offwind", axis=0)
         .index.to_series()
         .str.replace(" offwind-\w+\s?\w+", "", regex=True)
@@ -197,7 +200,7 @@ def add_p2p_connections():
         ).item(),
         axis=1,
     )
-    # p2p connections are DC and onshore not considers the conversion back to AC
+    # p2p connections are DC and onshore node does not consider the conversion back to AC. Hence, we need to add the onshore node cost
     line_length_factor = params["length_factor"]
     p2p_lines_df["cost"] = p2p_lines_df["length"].apply(
         lambda x: x
@@ -488,8 +491,12 @@ if __name__ == "__main__":
         # if a shape for the offshore grid is selected only consider regions within this shape
         if offgrid_config["sea_region"]:
             sea_shape = gpd.read_file(offgrid_config["sea_region"])
+            # check intersection above 1 km2 with sea shape because there are some regions which intersect but were not meshed in build bus regions
             offshore_regions = offshore_regions[
-                offshore_regions.intersects(sea_shape.geometry.unary_union)
+                offshore_regions.intersection(sea_shape.geometry.unary_union)
+                .to_crs(3035)
+                .area
+                > 1000
             ]
 
         # model wake effect for offshore generators in relevant offshore region
@@ -505,6 +512,7 @@ if __name__ == "__main__":
         n.madd(
             "Bus",
             names="offwind_" + offshore_regions.index,
+            location=offshore_regions.index,
             carrier="AC",
             x=offshore_regions["x_region"].values,
             y=offshore_regions["y_region"].values,

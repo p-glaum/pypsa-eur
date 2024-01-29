@@ -3417,7 +3417,6 @@ def lossy_bidirectional_links(n, carrier, efficiencies={}):
         n.links.loc[carrier_i].copy().rename({"bus0": "bus1", "bus1": "bus0"}, axis=1)
     )
     rev_links.capital_cost = 0
-    rev_links.length = 0
     rev_links["reversed"] = True
     rev_links.index = rev_links.index.map(lambda x: x + "-reversed")
 
@@ -3433,6 +3432,7 @@ def lossy_bidirectional_links(n, carrier, efficiencies={}):
         n.links.loc[carrier_i, "efficiency2"] = (
             -compression_per_1000km * n.links.loc[carrier_i, "length"] / 1e3
         )
+    n.links.loc[n.links.reversed, "length"] = 0
 
 
 def update_p2p_connection_cost(n, factor=2 / 3):
