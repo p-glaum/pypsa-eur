@@ -305,7 +305,7 @@ def set_carbon_constraints(n, opts):
         m = re.match(r"^\d+p\d$", o, re.IGNORECASE)
         if m is not None:
             budget = snakemake.config["co2_budget"][m.group(0)] * 1e9
-    if budget != None:
+    if budget is not None:
         logger.info(f"add carbon budget of {budget}")
         n.add(
             "GlobalConstraint",
@@ -428,7 +428,7 @@ def apply_time_segmentation_perfect(
     """
     try:
         import tsam.timeseriesaggregation as tsam
-    except:
+    except ImportError:
         raise ModuleNotFoundError(
             "Optional dependency 'tsam' not found." "Install via 'pip install tsam'"
         )
@@ -503,7 +503,7 @@ if __name__ == "__main__":
             opts="",
             clusters="37",
             ll="v1.5",
-            sector_opts="1p7-4380H-T-H-B-I-A-solar+p3-dist1",
+            sector_opts="1p7-4380H-T-H-B-I-A-dist1",
         )
 
     update_config_with_sector_opts(snakemake.config, snakemake.wildcards.sector_opts)

@@ -17,6 +17,8 @@ rule add_existing_baseyear:
         costs="data/costs_{}.csv".format(config["scenario"]["planning_horizons"][0]),
         cop_soil_total=RESOURCES + "cop_soil_total_elec_s{simpl}_{clusters}.nc",
         cop_air_total=RESOURCES + "cop_air_total_elec_s{simpl}_{clusters}.nc",
+        existing_heating_distribution=RESOURCES
+        + "existing_heating_distribution_elec_s{simpl}_{clusters}_{planning_horizons}.csv",
         existing_heating="data/existing_infrastructure/existing_heating_raw.csv",
         existing_solar="data/existing_infrastructure/solar_capacity_IRENA.csv",
         existing_onwind="data/existing_infrastructure/onwind_capacity_IRENA.csv",
@@ -127,7 +129,7 @@ rule solve_sector_network_perfect:
     output:
         RESULTS
         + "postnetworks/elec_s{simpl}_{clusters}_l{ll}_{opts}_{sector_opts}_brownfield_all_years.nc",
-    threads: 4
+    threads: solver_threads
     resources:
         mem_mb=config["solving"]["mem"],
     shadow:

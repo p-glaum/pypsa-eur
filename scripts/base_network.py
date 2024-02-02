@@ -568,7 +568,7 @@ def _set_countries_and_substations(n, config, country_shapes, offshore_shapes):
         ~buses["under_construction"]
     )
 
-    c_nan_b = buses.country == "na"
+    c_nan_b = buses.country.fillna("na") == "na"
     if c_nan_b.sum() > 0:
         c_tag = _get_country(buses.loc[c_nan_b])
         c_tag.loc[~c_tag.isin(countries)] = np.nan
@@ -879,11 +879,12 @@ def base_network(
     transformers = _set_electrical_parameters_transformers(transformers, config)
     links = _set_electrical_parameters_links(links, config, links_p_nom)
     converters = _set_electrical_parameters_converters(converters, config)
+    snapshots = snakemake.params.snapshots
 
     n = pypsa.Network()
     n.name = "PyPSA-Eur"
 
-    n.set_snapshots(pd.date_range(freq="h", **config["snapshots"]))
+    n.set_snapshots(pd.date_range(freq="h", **snapshots))
     n.madd("Carrier", ["AC", "DC"])
 
     n.import_components_from_dataframe(buses, "Bus")

@@ -2,10 +2,22 @@
 #
 # SPDX-License-Identifier: MIT
 
-import os, sys
+import os, sys, glob
 
-sys.path.insert(0, os.path.abspath("scripts"))
+helper_source_path = [match for match in glob.glob("**/_helpers.py", recursive=True)]
+
+for path in helper_source_path:
+    path = os.path.dirname(os.path.abspath(path))
+    sys.path.insert(0, os.path.abspath(path))
+
 from _helpers import validate_checksum
+
+
+def solver_threads(w):
+    solver_options = config["solving"]["solver_options"]
+    option_set = config["solving"]["solver"]["options"]
+    threads = solver_options[option_set].get("threads", 4)
+    return threads
 
 
 def memory(w):
@@ -31,7 +43,7 @@ def memory(w):
 def input_custom_extra_functionality(w):
     path = config["solving"]["options"].get("custom_extra_functionality", False)
     if path:
-        return workflow.source_path(path)
+        return os.path.join(os.path.dirname(workflow.snakefile), path)
     return []
 
 

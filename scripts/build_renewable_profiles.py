@@ -210,6 +210,7 @@ if __name__ == "__main__":
     resource = params["resource"]  # pv panel params / wind turbine params
     correction_factor = params.get("correction_factor", 1.0)
     capacity_per_sqkm = params["capacity_per_sqkm"]
+    snapshots = snakemake.params.snapshots
 
     if correction_factor != 1.0:
         logger.info(f"correction_factor is set as {correction_factor}")
@@ -219,7 +220,7 @@ if __name__ == "__main__":
     else:
         client = None
 
-    sns = pd.date_range(freq="h", **snakemake.config["snapshots"])
+    sns = pd.date_range(freq="h", **snapshots)
     cutout = atlite.Cutout(snakemake.input.cutout).sel(time=sns)
     regions = gpd.read_file(snakemake.input.regions)
     assert not regions.empty, (
@@ -339,7 +340,7 @@ if __name__ == "__main__":
         f"Completed weighted capacity factor time series calculation ({duration:2.2f}s)"
     )
 
-    logger.info(f"Calculating maximal capacity per bus")
+    logger.info("Calculating maximal capacity per bus")
     p_nom_max = capacity_per_sqkm * availability @ area
 
     logger.info("Calculate average distances.")
